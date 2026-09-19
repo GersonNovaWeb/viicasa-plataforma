@@ -1,0 +1,8 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // The browser uses the Node API. Admin SDK access is governed by IAM,
+    // and every sensitive API operation checks its own session and role.
+    match /{document=**} { allow read, write: if false; }
+  }
+}

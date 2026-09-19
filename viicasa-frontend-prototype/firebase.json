@@ -1,0 +1,11 @@
+{
+  "firestore": {
+    "rules": "../viicasa-backend/firestore.rules",
+    "indexes": "../viicasa-backend/firestore.indexes.json"
+  },
+  "emulators": {
+    "firestore": {"host": "127.0.0.1", "port": 8088},
+    "ui": {"enabled": false},
+    "singleProjectMode": false
+  }
+}

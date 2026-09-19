@@ -1,0 +1,15 @@
+{
+  "name": "viicasa-frontend-prototype",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server.mjs",
+    "dev": "node dev-local.mjs",
+    "dev:local": "node dev-local.mjs",
+    "check": "node --check server.mjs && node --check platform-server.mjs && node --check platform.js && node --check app.js && node --check currency-ui.js && node --check demo-pricing.mjs && node --check dev-local.mjs && node --check preflight.mjs",
+    "test:platform": "node --test test/platform.test.mjs",
+    "test:currency": "node --test test/currency.test.mjs",
+    "preflight": "node --env-file-if-exists=.env preflight.mjs"
+  },
+  "engines": {"node": ">=22"}
+}

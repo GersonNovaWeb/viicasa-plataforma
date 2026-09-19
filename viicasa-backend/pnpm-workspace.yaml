@@ -1,0 +1,5 @@
+# These optional install hooks are not needed by this API or the Firestore emulator.
+allowBuilds:
+  '@firebase/util': false
+  protobufjs: false
+  re2: false

@@ -1,0 +1,44 @@
+{
+  "name": "viicasa-backend",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.19.0",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env --watch src/server.js",
+    "start": "node --env-file-if-exists=.env src/server.js",
+    "test": "node --test --test-concurrency=1 test/*.test.js",
+    "test:postgres": "node scripts/test-postgres.js",
+    "emulator:start": "firebase emulators:start --only firestore --project demo-viicasa",
+    "test:firestore": "node scripts/test-firestore.js",
+    "firebase:check": "node --env-file-if-exists=.env scripts/firestore-check.js",
+    "docs:export": "node --env-file-if-exists=.env scripts/export-openapi.js",
+    "check": "node scripts/check.js",
+    "admin:create": "node --env-file-if-exists=.env scripts/create-admin.js",
+    "demo:seed": "node --env-file-if-exists=.env scripts/seed.js",
+    "mail:work": "node --env-file-if-exists=.env scripts/mail-worker.js",
+    "maintenance": "node --env-file-if-exists=.env scripts/maintenance.js"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "@fastify/cors": "^11.3.0",
+    "@fastify/helmet": "^13.1.1",
+    "@fastify/multipart": "^10.1.1",
+    "@fastify/rate-limit": "^11.2.0",
+    "@fastify/swagger": "^9.8.1",
+    "@fastify/swagger-ui": "^6.1.1",
+    "fastify": "^5.12.1",
+    "file-type": "^22.0.2",
+    "firebase-admin": "^14.3.0",
+    "ip-location-api": "5.0.2",
+    "nodemailer": "^9.1.1",
+    "pg": "^8.23.0",
+    "stripe": "^22.6.1"
+  },
+  "devDependencies": {
+    "firebase-tools": "^15.29.0"
+  }
+}

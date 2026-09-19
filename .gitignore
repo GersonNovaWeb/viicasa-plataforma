@@ -1,0 +1,17 @@
+node_modules/
+.npm-cache/
+.env
+.env.*
+!.env.example
+data/
+.secrets/
+.firebase/
+coverage/
+*.log
+*.pem
+*.key
+*firebase-adminsdk*.json
+*service-account*.json
+*.zip
+.DS_Store
+Thumbs.db
