@@ -50,7 +50,7 @@ describe('Firestore nativo en emulador local',{skip:process.env.RUN_FIRESTORE_TE
   after(async()=>{await app?.close();if(temp)await rm(temp,{recursive:true,force:true});});
   test('conexión real al emulador, inicialización repetible y OpenAPI',async()=>{
     await initializeStore(app.store);assert.equal(expect(await req('GET','/ready'),200).database,'firestore');
-    const spec=expect(await req('GET','/openapi.json'),200);assert.equal(Object.keys(spec.paths).length,43);
+    const spec=expect(await req('GET','/openapi.json'),200);assert.equal(Object.keys(spec.paths).length,44);
     assert.ok(spec.paths['/v1/admin/customers']?.get);
     assert.ok(spec.paths['/v1/bookings']);
   });

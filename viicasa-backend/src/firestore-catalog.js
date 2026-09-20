@@ -5,6 +5,7 @@ import {id,fail} from './lib.js';
 import {now,key,must,clean,searchTerms,auditDoc,claimUnique} from './firestore-store.js';
 import {blockCalendar,unblockCalendar,calendar,enqueue} from './firestore-commerce.js';
 import * as s from './firestore-schemas.js';
+import {installDemoProperties} from './demo-properties.js';
 
 export const adminSchema=(tag,extra={})=>({tags:[tag],security:[{bearerAuth:[]}],...extra});
 // Cursor pagination avoids Firestore billing for skipped documents. Offset is capped for old clients.
@@ -49,6 +50,12 @@ export async function saveVariant(store,actor,productId,input,variantId){
   });
 }
 export async function registerCatalog(app,store,config,guard){
+  app.post('/v1/admin/demo-properties',{preHandler:guard.admin(['admin']),schema:adminSchema('Administración catálogo',{
+    body:s.object({confirm:{const:true}}),
+  })},async request=>{
+    if(config.production&&config.paymentProvider!=='disabled')fail(409,'Desactiva los pagos antes de cargar propiedades de prueba');
+    return installDemoProperties(store,request.user.id);
+  });
   app.get('/v1/shop/settings',{schema:{tags:['Catálogo público']}},async()=>({items:await store.list('shop_settings',{limit:10})}));
   app.put('/v1/admin/shop/settings/:currency',{preHandler:guard.admin(['admin']),schema:adminSchema('Administración catálogo',{
     params:s.object({currency:s.currency}),body:s.object({pickup_enabled:s.bool,shipping_enabled:s.bool,shipping_minor:s.int(),pickup_instructions:s.str(3000,0),terms:s.str(5000,0)})})},async request=>store.transaction(async tx=>{

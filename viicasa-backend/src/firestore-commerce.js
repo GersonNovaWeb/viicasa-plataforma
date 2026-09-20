@@ -50,6 +50,7 @@ function saveCheckout(tx,c,index){
 }
 export async function createBooking(store,config,guestId,idempotencyKey,input){
   return store.transaction(async tx=>{
+    if(config.production&&(await tx.get('properties',input.property_id))?.is_demo)fail(409,'Esta propiedad es de demostración y no admite reservas reales');
     const saved=await prior(tx,guestId,idempotencyKey,input,'booking');if(saved.row)return safeCheckout(saved.row);
     const estimate=await quote(tx,input);
     const c=checkoutRecord(config,guestId,idempotencyKey,saved.requestHash,'booking',input.customer,estimate.total_minor,

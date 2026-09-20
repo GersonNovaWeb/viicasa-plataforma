@@ -80,6 +80,28 @@ Documentación: https://firebase.google.com/docs/auth/web/google-signin
 
 ## Recorrido de aceptación
 
+### Propiedades de prueba incluidas en el código
+
+Después de desplegar, iniciar sesión con el administrador y abrir `/admin` →
+Propiedades → **Cargar 4 propiedades de prueba**. Confirmar la publicación.
+Las fichas están definidas en `viicasa-backend/src/demo-properties.js`:
+Casa Brisa, Villa Oliva, Casa Lumbre y Residencia Arena, con tres imágenes cada
+una, descripciones ES/EN y tarifas ficticias USD/CAD. Las imágenes `/assets/`
+forman parte del repositorio y sobreviven a los despliegues.
+
+La carga requiere rol admin y pagos desactivados en producción. No se ejecuta
+automáticamente al arrancar ni al desplegar. Es transaccional e idempotente:
+repetirla no duplica registros ni sobrescribe cambios, incluso si posteriormente
+se archivan o renombran las propiedades creadas. Tampoco toca las colecciones
+`cs_*` de la landing ni crea productos, clientes, reservas o cobros.
+
+Estas propiedades llevan `is_demo=true`, conservado al editarlas; el servidor
+rechaza reservas de ellas en producción aunque más adelante se habiliten pagos.
+Para operar una propiedad real, crear una ficha nueva con sus datos reales.
+Después de cargar el catálogo, los datos quedan en Firestore sin otro despliegue.
+
+### Validación real
+
 - Abrir `/cuenta`; registrarse con una cuenta Google que no sea la del admin.
 - Recargar y cerrar sesión; comprobar que la sesión se valida en servidor.
 - Ese cliente debe ver su perfil, pero no poder acceder a `/api/admin/customers`.
