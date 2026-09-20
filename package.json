@@ -10,6 +10,7 @@
     "dev": "node viicasa-frontend-prototype/dev-local.mjs",
     "build": "node scripts/check.mjs && node viicasa-backend/scripts/geoip.mjs",
     "check": "node scripts/check.mjs",
+    "test:startup": "node --test test/startup.test.mjs",
     "preflight:auth": "node --env-file-if-exists=.env viicasa-frontend-prototype/preflight.mjs",
     "preflight:payments": "node --env-file-if-exists=.env viicasa-frontend-prototype/preflight.mjs --payments",
     "test:platform": "node --test viicasa-frontend-prototype/test/platform.test.mjs viicasa-frontend-prototype/test/currency.test.mjs",

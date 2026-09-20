@@ -20,6 +20,10 @@ ni apuntar todavía el dominio principal a esta plataforma.
 No existe `.next` ni `dist`: se ejecuta `server.js` de la raíz y se conservan ambas
 carpetas hijas. Si el panel solo ofrece un directorio estático, no es el tipo de
 aplicación correcto. Revisar los campos que muestre el panel antes de confirmar.
+El lanzador LiteSpeed de Hostinger carga `server.js` con `require()`: este archivo
+debe conservar la importación dinámica sin `await` en el nivel principal.
+`npm run test:startup` comprueba ambos modos de carga y los errores de arranque
+con un módulo de prueba aislado, sin conectarse a Firebase ni Stripe.
 Referencia oficial: https://www.hostinger.com/support/how-to-deploy-a-nodejs-website-in-hostinger/
 
 ## Variables de entorno
