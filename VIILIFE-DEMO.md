@@ -4,7 +4,8 @@ The platform defaults `VIILIFE_MODE` to `demo`. Only ViiLife changes; ViiShop, p
 
 ## User journey
 
-- `/viilife` and `/viilife/limpieza`: service, duration, preferred days/start date/start time, contact and address. No focus-room questionnaire or mandatory Google login in the demo.
+- `/viilife`: immersive scroll-snap presentation of cleaning, laundry and home preparation, followed by the interactive demo service form on the same page. The cleaning action and fourth navigation dot scroll to the form; the other services retain their enquiry actions. Submitting continues to the usual request summary and simulated payment.
+- `/viilife/limpieza`: service, duration, preferred days/start date/start time, contact and address. No focus-room questionnaire or mandatory Google login in the demo.
 - Routine: hourly rate × hours per visit × selected days, one cycle only. Biweekly does not double visits. Deep cleaning retains the existing area/room formula for a single visit; additional services are not silently added.
 - Hours: 1–8, start 08:00–18:00, finishing by 20:00. These demo limits require operational approval before production.
 - Provisional large-order rule: **more than 3 hours OR more than 3 days**. Admin can edit thresholds and rate/currency in the ViiLife demo tab. CAD and USD amounts are independent, no currency conversion.
@@ -15,6 +16,8 @@ The platform defaults `VIILIFE_MODE` to `demo`. Only ViiLife changes; ViiShop, p
 ## Real email, test-only recipient
 
 All team notices **and customer previews** are forced server-side to `gerson@novaweb-agency.com`. The email entered in the form is not used as a delivery recipient. Subjects begin `[DEMO VIILIFE]`. Messages are plain-text transaction summaries, not the Coming Soon welcome templates. Do not use real personal details in a demo.
+
+Each submitted request and completed demo purchase queues a customer preview in the selected language: the ViiLife team will be in touch soon to coordinate details and the preferred schedule. This applies to small and large orders and does not require waiting for admin approval. Existing queued messages retain their original text; test with a new request after deployment.
 
 Hostinger server variables:
 

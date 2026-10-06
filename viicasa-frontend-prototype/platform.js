@@ -81,13 +81,25 @@ function errorText(error){if(lang==='es')return error.message;const map={'La pro
 async function start(){
   try{
     settings=await api('/config');preferredCurrency=settings.suggestedCurrency||'USD';const path=location.pathname;
-    if(path==='/viilife'&&settings.viilifeMode==='demo')return await cleaning().page();
+    // Keep the immersive service feed; cleaning checkout has its own route.
     if(['/shop','/viiconcierge','/viilife'].includes(path)){
-      await import('/app.js');navigation();
+      const serviceFeed=await import('/app.js');navigation();
+      if(path==='/viilife'&&settings.viilifeMode==='demo'){
+        const section=document.createElement('section');section.id='viilife-booking';section.className='platform viilife-booking';
+        section.setAttribute('aria-label',L('Elige tu servicio ViiLife','Choose your ViiLife service'));$('#feed').append(section);
+        serviceFeed.attachServiceForm(section);
+        try{
+          await cleaning().page({mount:content=>{section.innerHTML=content;}});
+          section.querySelector('a[href="#viilife-demo-form"]')?.addEventListener('click',event=>{event.preventDefault();$('#viilife-demo-form').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'start'});});
+        }catch{
+          section.innerHTML=`<div class="page-wrap"><h2>${L('Elige tu servicio ViiLife','Choose your ViiLife service')}</h2><p role="alert">${L('No pudimos cargar el formulario. Intenta abrirlo de nuevo.','We could not load the form. Please try opening it again.')}</p><a class="btn" href="/viilife/limpieza">${L('Abrir formulario','Open form')}</a></div>`;
+        }
+        if(location.hash==='#viilife-booking'||location.hash==='#viilife-demo-form')section.scrollIntoView({block:'start'});
+      }
       $('#prototype').textContent=settings.demo?L('Demostración · Sin cobros reales','Demo · No real charges'):'';
       document.querySelectorAll('[data-detail]').forEach(b=>{
         if(path!=='/viilife')b.innerHTML=(path==='/shop'?L('Explorar la colección','Explore the collection'):L('Explorar propiedades','Explore properties'))+' <span aria-hidden="true">↗</span>';
-        b.onclick=()=>path==='/viilife'?(Number(b.dataset.detail)===0?location.href='/viilife/limpieza':inquiry(null,L(['Limpieza','Lavado de ropa','Preparación del hogar'][Number(b.dataset.detail)],['Cleaning','Laundry','Home preparation'][Number(b.dataset.detail)]))):location.href=path==='/shop'?'/coleccion':'/propiedades';
+        b.onclick=()=>path==='/viilife'?(Number(b.dataset.detail)===0?($('#viilife-booking')?$('#viilife-booking').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'start'}):location.href='/viilife/limpieza'):inquiry(null,L(['Limpieza','Lavado de ropa','Preparación del hogar'][Number(b.dataset.detail)],['Cleaning','Laundry','Home preparation'][Number(b.dataset.detail)]))):location.href=path==='/shop'?'/coleccion':'/propiedades';
       });
       return;
     }

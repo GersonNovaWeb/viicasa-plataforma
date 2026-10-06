@@ -63,6 +63,7 @@ test('isolated ViiLife demo end-to-end, ownership, SMTP and payment safety',asyn
     });
     await t.test('mail transport is isolated and all messages are forced to approved mailbox',async()=>{
       const sent=[];await maintainViiLifeDemo(store,baseConfig,async mail=>sent.push(mail));assert.equal(sent.length,4);assert.ok(sent.every(mail=>mail.recipient===demoRecipient&&mail.subject.startsWith('[DEMO VIILIFE]')));
+      assert.ok(sent.every(mail=>mail.body.includes('The ViiLife team will be in touch soon')));
       await maintainViiLifeDemo(store,baseConfig,async()=>assert.fail('Duplicate send'));
       assert.equal(demoMailReady(baseConfig),false);
       assert.equal(await store.count('cs_contacts'),0);
@@ -82,6 +83,16 @@ test('isolated ViiLife demo end-to-end, ownership, SMTP and payment safety',asyn
       await store.set('viilife_demo_limits','mail',{sends:Array(90).fill(Date.now())});
       await createDemoRequest(store,other.id,randomUUID(),{...input,settings_revision:1});await maintainViiLifeDemo(store,baseConfig,async()=>assert.fail('Quota exceeded'));
       assert.equal((await store.list('viilife_demo_mail',{where:[['state','==','pending']]})).length,2);
+    });
+    await t.test('small Spanish orders queue contact-soon previews before and after demo payment',async()=>{
+      const small=await createDemoRequest(store,other.id,randomUUID(),{...input,locale:'es',settings_revision:1,selection:{...input.selection,hours:1},schedule:{...input.schedule,days:['mon']}});
+      assert.equal(small.quote.large,false);
+      const messages=async()=> (await store.list('viilife_demo_mail')).filter(mail=>mail.request_id===small.id);
+      assert.equal((await messages()).length,1);
+      await completeDemoRequest(store,other.id,small.id);
+      const queued=await messages();assert.equal(queued.length,3);
+      assert.ok(queued.every(mail=>mail.body.includes('El equipo de ViiLife se pondrá en contacto contigo pronto')));
+      assert.ok(queued.every(mail=>mail.recipient===demoRecipient));
     });
     await t.test('live cleaning creation and historical real checkout payments are blocked in demo mode',async()=>{
       await assert.rejects(createCleaningRequest(store,baseConfig,guest.id,randomUUID(),{}),e=>e.statusCode===409);
