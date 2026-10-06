@@ -146,6 +146,14 @@ export async function enqueue(tx,dedupe,recipient,subject,body){
   tx.create('mail_outbox',mailId,{recipient,subject,body,status:'pending',attempts:0,next_attempt:now(),created_at:now(),lease_token:null});
 }
 export async function notice(tx,c,status,config){
+  if(c.kind==='cleaning'){
+    const en=c.detail.locale==='en',pending=c.detail.selection.extras;
+    const label=en?'Home cleaning':'Limpieza de hogar',billing=c.detail.quote?.billing;
+    const body=`${label}: ${c.id}\n${status}\n${c.customer_name}\nTotal: ${(c.total_minor/100).toFixed(2)} ${c.currency}\n${billing?.scope==='one_cycle'?`${(billing.hourly_minor/100).toFixed(2)} ${c.currency}/h × ${billing.hours_per_visit} h × ${billing.visits} ${en?'visits':'visitas'}\n${en?'One cycle':'Un ciclo'}: ${billing.cycle==='weekly'?(en?'weekly':'semanal'):(en?'every two weeks':'quincenal')}. ${en?'One visit per selected day, no automatic renewal. Dates subject to confirmation.':'Una visita por día seleccionado, sin renovación automática. Fechas sujetas a confirmación.'}`:(en?'Single visit, no automatic recurring charge. Requested schedule subject to confirmation.':'Una visita, sin cobros recurrentes automáticos. Horario solicitado sujeto a confirmación.')}\n${JSON.stringify(c.detail,null,2)}\n${pending.length?(en?'In-person extras: estimate pending. VIICASA will arrange a call/visit after payment.':'Extras en persona: estimación pendiente. VIICASA coordinará llamada/visita después del pago.'):''}\n${en?'Manage email preferences: ':'Preferencias de correo: '}${config.siteUrl.replace(/\/$/,'')}/cuenta`;
+    await enqueue(tx,`${c.id}:${status}:customer`,c.customer_email,`VIICASA · ${label} · ${status}`,body);
+    await enqueue(tx,`${c.id}:${status}:admin`,config.adminEmail,`VIICASA · ${label} · ${status}`,body);
+    return;
+  }
   const label=c.kind==='booking'?'Reservación':'Pedido',subject=`VIICASA · ${label} ${status}`;
   const body=`${label}: ${c.id}\nEstado: ${status}\nCliente: ${c.customer_name}\nTotal: ${(c.total_minor/100).toFixed(2)} ${c.currency}\nImporte del pago: ${(c.due_minor/100).toFixed(2)} ${c.currency}\nDetalle: ${JSON.stringify(c.detail,null,2)}`;
   await enqueue(tx,`${c.id}:${status}:customer`,c.customer_email,subject,body);

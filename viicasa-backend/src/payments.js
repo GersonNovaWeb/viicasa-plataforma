@@ -14,7 +14,7 @@ export function paymentGateway(config) {
           client_reference_id: checkout.id, customer_email: checkout.customer_email,
           metadata: { checkout_id: checkout.id, payment_id: payment.id },
           line_items: [{ quantity: 1, price_data: { currency: payment.currency.toLowerCase(), unit_amount: payment.amount_minor,
-            product_data: { name: `VIICASA · ${checkout.kind === 'booking' ? 'Reservación' : 'Pedido'} ${checkout.id}` } } }],
+            product_data: { name: `VIICASA · ${checkout.kind === 'booking' ? 'Reservación' : checkout.kind === 'cleaning' ? 'ViiLife · Home cleaning' : 'Pedido'} ${checkout.id}` } } }],
           success_url: `${config.siteUrl.replace(/\/$/, '')}/pago/resultado?checkout=${checkout.id}`,
           cancel_url: `${config.siteUrl.replace(/\/$/, '')}/pago/cancelado?checkout=${checkout.id}`,
           expires_at: Math.floor(new Date(payment.expires_at).valueOf()/1000),

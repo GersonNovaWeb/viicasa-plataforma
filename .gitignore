@@ -10,6 +10,7 @@ coverage/
 *.log
 *.pem
 *.key
+*.p8
 *firebase-adminsdk*.json
 *service-account*.json
 *.zip

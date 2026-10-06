@@ -9,7 +9,8 @@ import {saveCatalog,saveVariant} from '../viicasa-backend/src/firestore-catalog.
 import {safeCheckout} from '../viicasa-backend/src/firestore-commerce.js';
 import {createUser} from '../viicasa-backend/src/firestore-auth.js';
 import {seedDemoPricing} from './demo-pricing.mjs';
-import {saveGoogleCustomer,publicCustomer} from '../viicasa-backend/src/customer-registration.js';
+import {saveSocialCustomer,publicCustomer} from '../viicasa-backend/src/customer-registration.js';
+import {enabledSocialProviders,validateSocialIdentity,isAllowedGoogleAdmin} from '../viicasa-backend/src/social-auth.js';
 const require=createRequire(new URL('../viicasa-backend/package.json',import.meta.url));
 const {initializeApp,applicationDefault,cert}=require('firebase-admin/app');
 const {getAuth}=require('firebase-admin/auth');
@@ -21,6 +22,14 @@ if(!demo&&!origin.startsWith('https://'))throw Error('Live platform requires HTT
 if(demo&&process.env.PAYMENT_PROVIDER==='stripe'&&!process.env.STRIPE_SECRET_KEY?.startsWith('sk_test_'))throw Error('Local demo only accepts Stripe test keys.');
 const config=configFromEnv(demo?{DATABASE_DRIVER:'firestore',FIREBASE_MODE:'emulator',FIREBASE_PROJECT_ID:'demo-viicasa-platform',FIRESTORE_EMULATOR_HOST:'127.0.0.1:8088',PUBLIC_SITE_URL:origin,ALLOWED_ORIGINS:origin,PAYMENT_PROVIDER:process.env.PAYMENT_PROVIDER==='stripe'?'stripe':'demo',STRIPE_SECRET_KEY:process.env.STRIPE_SECRET_KEY,STRIPE_WEBHOOK_SECRET:process.env.STRIPE_WEBHOOK_SECRET,MAIL_MODE:'outbox',ADMIN_EMAIL:'demo@example.invalid'}:{...process.env,DATABASE_DRIVER:'firestore',FIREBASE_MODE:'live',NODE_ENV:'production',PUBLIC_SITE_URL:origin,ALLOWED_ORIGINS:origin,PAYMENT_PROVIDER:process.env.PAYMENT_PROVIDER||'disabled'});
 let appPromise,authService;
+// Section-level preview: never changes the payment mode of ViiShop or properties.
+config.viilifeMode=process.env.VIILIFE_MODE||'demo';
+config.viilifeDemoMail=process.env.VIILIFE_DEMO_MAIL_MODE||'outbox';
+if(!['demo','live'].includes(config.viilifeMode)||!['outbox','smtp'].includes(config.viilifeDemoMail))throw Error('Invalid ViiLife mode');
+if(demo&&config.viilifeDemoMail==='smtp'){
+  config.smtp={host:process.env.SMTP_HOST,port:Number(process.env.SMTP_PORT||587),secure:process.env.SMTP_SECURE==='true',auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASSWORD}};
+  config.mailFrom=process.env.MAIL_FROM;
+}
 const api=()=>appPromise??=(buildApp(config,{logger:false}).catch(e=>{appPromise=null;throw e;}));
 export async function platformReady(){
   prepareGeolocation().catch(()=>console.warn('Country lookup unavailable; default currency is USD.'));
@@ -61,6 +70,7 @@ function auth(){
 }
 // A production launch needs approved privacy/terms and a configured payment provider.
 const writesOpen=()=>demo||process.env.COMMERCE_ENABLED==='true'&&process.env.PRIVACY_APPROVED==='true';
+const socialProviders=()=>enabledSocialProviders(process.env,demo);
 export async function handlePlatform(req,res,url){
   const path=url.pathname;
   if(!path.startsWith('/api/')&&!path.startsWith('/v1/media/')&&path!=='/v1/webhooks/stripe')return false;
@@ -68,17 +78,18 @@ export async function handlePlatform(req,res,url){
     limit(req);
     const mutation=!['GET','HEAD'].includes(req.method);
     if(mutation&&path!=='/v1/webhooks/stripe'&&req.headers.origin!==origin)fail(403,'Origen no permitido');
-    if(path==='/api/config'&&req.method==='GET'){json(res,200,{demo,...locationPreference(req,(process.env.TRUSTED_PROXY_IPS||'').split(',').map(s=>s.trim()).filter(Boolean)),commerceEnabled:writesOpen(),payment:config.paymentProvider,googleEnabled:!demo&&!!process.env.FIREBASE_WEB_API_KEY,firebase:!demo?{apiKey:process.env.FIREBASE_WEB_API_KEY,authDomain:process.env.FIREBASE_AUTH_DOMAIN||'viicasa.firebaseapp.com',projectId:config.firebaseProjectId,appId:process.env.FIREBASE_WEB_APP_ID}:null});return true;}
+    if(path==='/api/config'&&req.method==='GET'){json(res,200,{demo,viilifeMode:config.viilifeMode,...locationPreference(req,(process.env.TRUSTED_PROXY_IPS||'').split(',').map(s=>s.trim()).filter(Boolean)),commerceEnabled:writesOpen(),payment:config.paymentProvider,googleEnabled:socialProviders().google,authProviders:socialProviders(),firebase:!demo?{apiKey:process.env.FIREBASE_WEB_API_KEY,authDomain:process.env.FIREBASE_AUTH_DOMAIN||'viicasa.firebaseapp.com',projectId:config.firebaseProjectId,appId:process.env.FIREBASE_WEB_APP_ID}:null});return true;}
     const app=await api();const store=app.store;
-    if(path==='/api/auth/google'&&req.method==='POST'){
-      if(demo||!process.env.FIREBASE_WEB_API_KEY)fail(503,'Google no está habilitado en este entorno');
+    if(['/api/auth/google','/api/auth/social'].includes(path)&&req.method==='POST'){
+      if(demo||!process.env.FIREBASE_WEB_API_KEY)fail(503,'El acceso social no está habilitado en este entorno');
       const input=JSON.parse((await payload(req)).toString());if(typeof input.idToken!=='string'||input.idToken.length>16000)fail(400,'Token inválido');
-      let user;try{user=await auth().verifyIdToken(input.idToken,true);}catch{fail(401,'Sesión de Google inválida');}
-      if(!user.email_verified||user.firebase?.sign_in_provider!=='google.com'||Date.now()/1000-user.auth_time>300)fail(401,'Vuelve a iniciar sesión con Google');
+      let user;try{user=await auth().verifyIdToken(input.idToken,true);}catch{fail(401,'Sesión inválida');}
+      validateSocialIdentity(user,socialProviders(),{fresh:true,expectedProvider:path==='/api/auth/google'?'google.com':undefined});
       const secret=token();
       const location=locationPreference(req,(process.env.TRUSTED_PROXY_IPS||'').split(',').map(s=>s.trim()).filter(Boolean));
-      await saveGoogleCustomer(store,user,location.country,secret);
-      secretCookie(res,'vc_guest',secret,2592000);secretCookie(res,'vc_identity',await auth().createSessionCookie(input.idToken,{expiresIn:28800000}));
+      const identityCookie=await auth().createSessionCookie(input.idToken,{expiresIn:28800000});
+      await saveSocialCustomer(store,user,location.country,secret);
+      secretCookie(res,'vc_guest',secret,2592000);secretCookie(res,'vc_identity',identityCookie);
       json(res,200,{ok:true});return true;
     }
     if(path==='/api/auth/logout'&&req.method==='POST'){
@@ -92,14 +103,15 @@ export async function handlePlatform(req,res,url){
     }
     const g=await guest(app,req,res);
     let verified;
-    if(g.row.google_uid){try{verified=await auth().verifySessionCookie(cookies(req).vc_identity||'',true);if(verified.uid!==g.row.google_uid)throw Error();}catch{for(const name of ['vc_guest','vc_identity'])secretCookie(res,name,'',0);fail(401,'Vuelve a iniciar sesión con Google');}}
+    const identityUid=g.row.firebase_uid||g.row.google_uid;
+    if(identityUid){try{verified=await auth().verifySessionCookie(cookies(req).vc_identity||'',true);if(verified.uid!==identityUid)throw Error();validateSocialIdentity(verified,socialProviders());}catch{for(const name of ['vc_guest','vc_identity'])secretCookie(res,name,'',0);fail(401,'Vuelve a iniciar sesión para continuar');}}
     if(path==='/api/account'&&req.method==='GET'){
       const records=await store.list('checkouts',{where:[['guest_id','==',g.row.id]],limit:100});
-      json(res,200,{profile:g.row.google_uid?publicCustomer(g.row):null,items:records.sort((a,b)=>b.created_at.localeCompare(a.created_at)).map(safeCheckout),demo});return true;
+      json(res,200,{profile:identityUid?publicCustomer(g.row):null,items:records.sort((a,b)=>b.created_at.localeCompare(a.created_at)).map(safeCheckout),demo});return true;
     }
     let target=path.replace(/^\/api/,'/v1'),secret=g.secret;
     if(path.startsWith('/api/admin/')){
-      if(!demo){if(!verified||!(process.env.ADMIN_EMAILS||'').split(',').map(s=>s.trim().toLowerCase()).includes(verified.email.toLowerCase()))fail(403,'Acceso administrativo denegado');
+      if(!demo){if(!isAllowedGoogleAdmin(verified,process.env.ADMIN_EMAILS))fail(403,'Acceso administrativo denegado');
         // Roles remain server-owned. Provision only an explicitly allowed verified Google identity.
         let index=await store.get('unique_keys',key('email',verified.email.toLowerCase()));
         if(!index){const u=await createUser(store,{email:verified.email,name:verified.name||verified.email,password:token()});index={owner:u.id};}
@@ -107,9 +119,10 @@ export async function handlePlatform(req,res,url){
       }else secret=cookies(req).vc_admin;
       if(!secret)fail(401,'Acceso administrativo requerido');
     }
-    const allowed=/^\/v1\/(properties(?:\/[^/]+)?|products(?:\/[^/]+)?|shop\/settings|bookings(?:\/quote)?|cart(?:\/items\/[^/]+)?|orders|checkouts\/[^/]+(?:\/(?:payment|cancel))?|inquiries|admin\/.+|media\/[^/]+|webhooks\/stripe)$/;
-    if(!allowed.test(target))fail(404,'Ruta no encontrada');
-    if(mutation&&!writesOpen()&&['/v1/bookings','/v1/orders','/v1/inquiries'].includes(target))fail(503,'El registro de operaciones todavía no está habilitado');
+    const allowed=/^\/v1\/(properties(?:\/[^/]+)?|products(?:\/[^/]+)?|shop\/settings|cleaning\/(?:settings|quote|requests|preferences)|bookings(?:\/quote)?|cart(?:\/items\/[^/]+)?|orders|checkouts\/[^/]+(?:\/(?:payment|cancel))?|inquiries|admin\/.+|media\/[^/]+|webhooks\/stripe)$/;
+    const viilifeDemoRoute=/^\/v1\/viilife-demo\/(settings|quote|requests(?:\/[a-f0-9-]+(?:\/pay)?)?)$/;
+    if(!allowed.test(target)&&!viilifeDemoRoute.test(target))fail(404,'Ruta no encontrada');
+    if(mutation&&!writesOpen()&&['/v1/bookings','/v1/orders','/v1/inquiries','/v1/cleaning/requests'].includes(target))fail(503,'El registro de operaciones todavía no está habilitado');
     const body=mutation?await payload(req):undefined;
     const headers={authorization:`Bearer ${secret||''}`};for(const h of ['content-type','idempotency-key','stripe-signature'])if(req.headers[h])headers[h]=req.headers[h];
     // No browser-provided Authorization or admin role is forwarded.

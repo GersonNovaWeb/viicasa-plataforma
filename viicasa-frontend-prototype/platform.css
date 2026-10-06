@@ -9,12 +9,112 @@ body.platform{color-scheme:light;background:var(--surface);color:var(--ink)}body
 @media(max-width:360px){.platform .wordmark{font-size:18px;letter-spacing:2px}.platform .header-actions{gap:4px}.platform .account{font-size:11px;padding:9px}.platform .header{padding:14px 14px 0}.platform .header nav{gap:20px}.catalog-intro h1{font-size:42px}.property-detail h1{font-size:42px}.platform .form-pair,.form-grid{grid-template-columns:1fr}.product-grid{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){.property-photo img,.gallery img{transition:none}.loader{animation:none}}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+/* Keep native date controls inside the reservation card at every column width. */
+.platform .booking-box{
+  min-width:0;
+  padding:28px;
+  border:1px solid var(--line);
+  border-top:3px solid var(--bronze);
+  border-radius:12px;
+  background:linear-gradient(145deg,#fff,#fdfbf7);
+  box-shadow:0 12px 36px #233f300d;
+}
+.platform .booking-box .kicker{margin:0 0 12px;line-height:1.5}
+.platform .booking-price{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:baseline;
+  gap:4px 8px;
+  margin:0 0 24px;
+  padding-bottom:22px;
+  border-bottom:1px solid var(--line);
+  font-size:26px;
+  line-height:1.3;
+  font-weight:500;
+  overflow-wrap:anywhere;
+}
+.platform .booking-price small{margin:0;font-weight:400;font-size:13px}
+.platform .booking-box form,.platform .booking-box label{min-width:0}
+.platform .booking-box form{gap:18px}
+.platform .booking-box .form-pair{
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,145px),1fr));
+  gap:14px;
+  min-width:0;
+}
+.platform .booking-box label{font-size:13px;font-weight:500;line-height:1.5}
+.platform .booking-box input,.platform .booking-box select{
+  display:block;
+  box-sizing:border-box;
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  min-height:52px;
+  margin-top:7px;
+  padding:12px 10px;
+  border-radius:6px;
+  font-size:16px;
+  line-height:1.4;
+}
+.platform .booking-box input:focus-visible,.platform .booking-box select:focus-visible{
+  outline:2px solid var(--bronze);
+  outline-offset:3px;
+}
+.platform .booking-box input::-webkit-date-and-time-value{min-width:0;text-align:left}
+.platform .booking-box .btn.full{
+  box-sizing:border-box;
+  width:100%;
+  min-width:0;
+  margin-top:4px;
+  padding:15px 12px;
+  border-radius:6px;
+  line-height:1.5;
+  white-space:normal;
+}
+.platform .booking-box>.quiet{margin:16px 0 0;text-align:center;font-size:12px;line-height:1.6}
+.platform .booking-box #quote-result{min-width:0;overflow-wrap:anywhere}
+.platform .booking-box .price-line>span{min-width:0}
+@media(max-width:700px){.platform .booking-box{padding:22px}}
+@media(max-width:380px){.platform .booking-box{padding:18px}}
 body.platform #feed{padding-top:var(--header-height,110px)}
 .header .currency-control{display:block;color:inherit;margin:0;flex-shrink:0}
 .header .currency-control select{width:90px;margin:0;padding:9px 7px;font:inherit;font-size:12px;border:1px solid #ffffff70;background:#243d34;color:#fff;border-radius:20px;cursor:pointer}
 .platform .header .currency-control select{color:var(--ink);background:#f2efe7;border-color:var(--line)}
 .currency-rates{border:1px solid var(--line);padding:18px;display:grid;gap:14px;min-width:0}
 .currency-rates legend{padding:0 8px;font-size:14px}.currency-rates .quiet{margin:0}
+.menu-toggle{display:none}
+.social-login{width:100%;max-width:400px;padding:28px;background:white;border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 36px #233f300d;flex-shrink:0}
+.social-login h3{font-size:29px;margin-top:0}.social-login>p{font-size:14px}
+.social-login-buttons{display:grid;gap:12px;margin-top:22px}
+.account-page>.section-title{flex-wrap:wrap}.account-page>.section-title>div:first-child{flex:1;min-width:min(100%,280px)}
+.social-login .social-button{gap:4px;flex-direction:column;width:100%;min-height:52px;border-radius:6px;font-weight:500}
+.social-login .social-button small{font-size:11px;font-weight:400}
+.social-google{background:white;color:#243d34;border-color:#c9d0c9}.social-google:hover{background:#f3f5f0}
+.social-apple{background:#161616;border-color:#161616}.social-apple:hover{background:#333}
+.social-facebook{background:#0866ff;border-color:#0866ff}.social-facebook:hover{background:#0754cf}
+.social-login .form-message{font-size:14px;line-height:1.6;overflow-wrap:anywhere;margin-bottom:0}
+.social-login .form-message:empty{display:none}
+@media(max-width:700px){.social-login{max-width:none;padding:22px}}
 @media(max-width:1150px){.header,.platform .header{display:grid;grid-template-columns:auto 1fr;gap:8px 20px;padding:16px 4% 0}.header-actions{justify-content:flex-end}.header nav,.platform .header nav{grid-column:1/-1;order:3;justify-content:center;gap:28px}.platform #feed{padding-top:116px}}
 @media(max-width:700px){.header,.platform .header{padding:14px 15px 0;gap:8px}.header .wordmark{font-size:20px;letter-spacing:2px;grid-template-columns:24px auto;column-gap:7px}.header .mark{width:24px;height:32px;font-size:22px}.header .brand-caption{font-size:5px;letter-spacing:1.3px}.header-actions,.platform .header-actions{gap:4px}.header .currency-control select{width:69px;padding:8px 4px;font-size:10px}.header .languages button{padding:10px 4px}.header .account,.platform .header .account{padding:9px 7px;font-size:10px}.header nav,.platform .header nav{gap:24px;justify-content:center}.platform #feed{padding-top:105px}}
 @media(max-width:360px){.header,.platform .header{padding-left:10px;padding-right:10px}.header .wordmark{font-size:18px;letter-spacing:1px}.header .brand-caption{letter-spacing:.6px}.header nav,.platform .header nav{gap:17px}}
+/* Mobile disclosure: links, language and account remain keyboard-accessible when open. */
+@media(max-width:700px){
+  .header,.platform .header{grid-template-columns:minmax(0,1fr) 44px;gap:0 16px;padding:14px 20px;max-height:100svh;overflow-y:auto}
+  .header .wordmark{justify-self:start}
+  .header .menu-toggle{display:flex;grid-column:2;grid-row:1;flex-direction:column;align-items:center;justify-content:center;gap:5px;width:44px;height:44px;padding:10px;border:1px solid currentColor;border-radius:6px;color:inherit}
+  .menu-toggle span{display:block;width:20px;height:1.5px;background:currentColor}
+  .menu-toggle[aria-expanded=true] span:nth-child(1){transform:translateY(6.5px) rotate(45deg)}
+  .menu-toggle[aria-expanded=true] span:nth-child(2){opacity:0}
+  .menu-toggle[aria-expanded=true] span:nth-child(3){transform:translateY(-6.5px) rotate(-45deg)}
+  .header #navigation,.header #header-actions{display:none}
+  .header.menu-open{background:var(--surface);color:var(--ink);border-bottom:1px solid var(--line);box-shadow:0 12px 32px #152a211a}
+  .header.menu-open #navigation{display:flex;grid-column:1/-1;grid-row:2;flex-direction:column;align-items:stretch;gap:0;margin-top:14px;padding:10px 0;border-top:1px solid var(--line);overflow:visible;white-space:normal}
+  .header.menu-open #navigation a{color:var(--ink);font-size:17px;padding:14px 10px;min-height:48px;border-radius:4px}
+  .header.menu-open #navigation a[aria-current=page]{background:#eee8de}
+  .header.menu-open #navigation a::after{display:none}
+  .header.menu-open #header-actions{display:flex;grid-column:1/-1;grid-row:3;justify-content:space-between;gap:16px;padding-top:14px;border-top:1px solid var(--line)}
+  .header.menu-open .languages button{color:#67716a;min-width:44px;min-height:44px;font-size:13px;padding:10px}
+  .header.menu-open .languages button[aria-pressed=true]{color:var(--ink)}
+  .header.menu-open .account{color:var(--ink);border-color:#839085;font-size:13px;min-height:44px;padding:11px 18px}
+  .header.menu-open :focus-visible{outline:2px solid var(--bronze);outline-offset:2px}
+}

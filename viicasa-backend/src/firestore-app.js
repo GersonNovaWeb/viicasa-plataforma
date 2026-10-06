@@ -14,6 +14,8 @@ import {paymentGateway,publicPayment} from './payments.js';
 import {fail} from './lib.js';
 import * as s from './firestore-schemas.js';
 import {listRegisteredCustomers} from './customer-registration.js';
+import {registerCleaning} from './cleaning.js';
+import {registerViiLifeDemo,maintainViiLifeDemo} from './viilife-demo.js';
 
 export async function buildFirestoreApp(config,options={}){
   const store=options.store||await openFirestore(config);
@@ -41,6 +43,8 @@ export async function buildFirestoreApp(config,options={}){
   app.get('/ready',{schema:{hide:true}},async()=>{must(await store.get('system','schema'));return{status:'ready',database:'firestore'};});
   app.get('/openapi.json',{preHandler:config.production?guard.admin():undefined,schema:{hide:true}},async()=>app.swagger());
   await registerAuth(app,store,config,guard);await registerCatalog(app,store,config,guard);
+  await registerCleaning(app,store,config,guard);
+  await registerViiLifeDemo(app,store,config,guard);
   const guestSchema=(tag,extra={})=>({tags:[tag],security:[{guestAuth:[]}],...extra});
   app.get('/v1/cart',{preHandler:guard.guest,schema:guestSchema('Carrito',{querystring:s.object({currency:s.currency},[])})},request=>cartItems(store,request.guest.id,request.query.currency));
   app.put('/v1/cart/items/:id',{preHandler:guard.guest,schema:guestSchema('Carrito',{params:s.idParams,body:s.object({quantity:s.int(1,99)})})},request=>setCart(store,request.guest.id,request.params.id,request.body.quantity));
@@ -76,7 +80,7 @@ export async function buildFirestoreApp(config,options={}){
     querystring:s.object({limit:s.int(1,100),cursor:{type:'string',pattern:'^[a-f0-9]{64}$'}},[])
   })},request=>listRegisteredCustomers(store,request.query));
   app.get('/v1/admin/checkouts',{preHandler:guard.admin(['admin','support','viewer']),schema:adminSchema('Operaciones',{querystring:s.object({...pageSchema.properties,
-    kind:s.choice(['order','booking']),status:s.choice(['pending','confirmed','cancelled','expired','payment_review'])},[])})},async request=>{
+    kind:s.choice(['order','booking','cleaning']),status:s.choice(['pending','confirmed','cancelled','expired','payment_review'])},[])})},async request=>{
     const filters=[];for(const f of ['kind','status'])if(request.query[f])filters.push([f,'==',request.query[f]]);
     const page=await listPage(store,'checkouts',request.query,filters);return{...page,items:page.items.map(safeCheckout)};
   });
@@ -85,13 +89,14 @@ export async function buildFirestoreApp(config,options={}){
   app.get('/v1/admin/summary',{preHandler:guard.admin(['admin','support','viewer']),schema:adminSchema('Resumen')},async()=>{
     const published=[['published','==',true],['archived','==',false]];
     const totals=await Promise.all([store.count('properties'),store.count('properties',published),store.count('products'),store.count('products',published),store.count('inquiries',[['status','==','new']])]);
-    const checkouts=await Promise.all(['order','booking'].flatMap(kind=>['pending','confirmed','cancelled','expired','payment_review'].map(async status=>({kind,status,count:await store.count('checkouts',[['kind','==',kind],['status','==',status]])}))));
+    const checkouts=await Promise.all(['order','booking','cleaning'].flatMap(kind=>['pending','confirmed','cancelled','expired','payment_review'].map(async status=>({kind,status,count:await store.count('checkouts',[['kind','==',kind],['status','==',status]])}))));
     return{properties:{total:totals[0],published:totals[1]},products:{total:totals[2],published:totals[3]},inquiries:{unread:totals[4]},checkouts};
   });
   app.get('/v1/admin/mail-status',{preHandler:guard.admin(['admin']),schema:adminSchema('Operación técnica')},async()=>({mode:config.mailMode,
     sent:await store.count('mail_outbox',[['status','==','sent']]),pending:await store.count('mail_outbox',[['status','in',['pending','processing']]]),failed:await store.count('mail_outbox',[['status','==','failed']])}));
   app.get('/v1/admin/audit',{preHandler:guard.admin(['admin']),schema:adminSchema('Operación técnica',{querystring:pageSchema})},request=>listPage(store,'audit_log',request.query));
   app.decorate('maintenance',async()=>{
+    await maintainViiLifeDemo(store,config);
     await expireHolds(store);await deliverMail(store,config);
     const expired=await store.list('sessions',{where:[['expires_at','<=',now()]],limit:100});
     await store.transaction(async tx=>{for(const row of expired)tx.remove('sessions',row.id);});

@@ -9,6 +9,7 @@ export async function startPayment(store,config,gateway,guestId,checkoutId){
   const {payment,checkout}=await store.transaction(async tx=>{
     const c=must(await tx.get('checkouts',checkoutId),'Operación no encontrada');
     if(c.guest_id!==guestId)fail(404,'Operación no encontrada');
+    if(c.kind==='cleaning'&&config.viilifeMode==='demo')fail(409,'ViiLife está en demostración; no se permiten cobros reales.');
     if(c.status!=='pending'||c.expires_at<=now())fail(409,'La operación ya no admite pagos');
     let p=await tx.get('payments',c.id);
     if(p){

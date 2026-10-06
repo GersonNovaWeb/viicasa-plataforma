@@ -65,6 +65,11 @@ bloqueadas; Google, perfiles y administración sí pueden probarse.
 
 ## Firebase y cuentas de clientes
 
+Para Google, Apple y Facebook y la verificación de clientes, consultar
+`ACCESOS-CLIENTES.md`. Apple/Facebook requieren configuración externa y las
+variables `AUTH_APPLE_ENABLED=true` / `AUTH_FACEBOOK_ENABLED=true`; por defecto
+están desactivados. No cambia el acceso administrativo exclusivo de Google.
+
 1. Firebase → Authentication: confirmar proveedor Google habilitado.
 2. En Configuración → Dominios autorizados, agregar el hostname temporal exacto,
    sin `https://` ni rutas. No borrar los dominios de la landing.

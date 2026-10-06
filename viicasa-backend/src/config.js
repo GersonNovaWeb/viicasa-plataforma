@@ -19,6 +19,8 @@ export function configFromEnv(env = process.env) {
     siteUrl: env.PUBLIC_SITE_URL || 'http://localhost:3000',
     origins: (env.ALLOWED_ORIGINS || 'http://localhost:3000').split(',').map(x => x.trim()),
     adminEmail: env.ADMIN_EMAIL || 'admin@example.com',
+    viilifeMode: env.VIILIFE_MODE || 'live',
+    viilifeDemoMail: env.VIILIFE_DEMO_MAIL_MODE || 'outbox',
     paymentProvider: env.PAYMENT_PROVIDER || (production ? 'disabled' : 'demo'),
     stripeKey: env.STRIPE_SECRET_KEY, stripeWebhookSecret: env.STRIPE_WEBHOOK_SECRET,
     holdMinutes: integer('HOLD_MINUTES', 30, 5, 120), sessionHours: integer('SESSION_HOURS', 8, 1, 24),
@@ -34,6 +36,8 @@ export function configFromEnv(env = process.env) {
     if(config.firebaseMode==='live' && (env.FIRESTORE_EMULATOR_HOST || config.firebaseProjectId.startsWith('demo-')))throw new Error('No mezclar proyecto real y emulador');
   }
   if (!['disabled', 'demo', 'stripe'].includes(config.paymentProvider)) throw new Error('PAYMENT_PROVIDER inválido');
+  if(!['live','demo'].includes(config.viilifeMode))throw new Error('VIILIFE_MODE inválido');
+  if(!['outbox','smtp'].includes(config.viilifeDemoMail))throw new Error('VIILIFE_DEMO_MAIL_MODE inválido');
   if (!['outbox', 'smtp'].includes(config.mailMode)) throw new Error('MAIL_MODE inválido');
   if (config.driver === 'postgres' && !config.databaseUrl) throw new Error('Falta DATABASE_URL');
   if (config.paymentProvider === 'stripe' && (!config.stripeKey || !config.stripeWebhookSecret)) throw new Error('Faltan credenciales de Stripe');
