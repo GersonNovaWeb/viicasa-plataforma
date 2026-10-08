@@ -1,6 +1,7 @@
 import {id,hash,fail,dateRange,money} from './lib.js';
 import {now,afterMinutes,key,must,auditDoc} from './firestore-store.js';
 import {propertyRate,variantRate} from './pricing.js';
+import {renderViiLifeMail} from './viilife-mail.js';
 
 export const safeCheckout=row=>{
   const {guest_id,request_hash,idempotency_key,...safe}=row;
@@ -141,17 +142,18 @@ export async function expireHolds(store){
     await release(tx,c,'expired');return 1;
   });return{expired};
 }
-export async function enqueue(tx,dedupe,recipient,subject,body){
+export async function enqueue(tx,dedupe,recipient,subject,body,html){
   const mailId=key('mail',dedupe);if(await tx.get('mail_outbox',mailId))return;
-  tx.create('mail_outbox',mailId,{recipient,subject,body,status:'pending',attempts:0,next_attempt:now(),created_at:now(),lease_token:null});
+  tx.create('mail_outbox',mailId,{recipient,subject,body,...(html?{html}:{}),status:'pending',attempts:0,next_attempt:now(),created_at:now(),lease_token:null});
 }
 export async function notice(tx,c,status,config){
   if(c.kind==='cleaning'){
-    const en=c.detail.locale==='en',pending=c.detail.selection.extras;
-    const label=en?'Home cleaning':'Limpieza de hogar',billing=c.detail.quote?.billing;
-    const body=`${label}: ${c.id}\n${status}\n${c.customer_name}\nTotal: ${(c.total_minor/100).toFixed(2)} ${c.currency}\n${billing?.scope==='one_cycle'?`${(billing.hourly_minor/100).toFixed(2)} ${c.currency}/h × ${billing.hours_per_visit} h × ${billing.visits} ${en?'visits':'visitas'}\n${en?'One cycle':'Un ciclo'}: ${billing.cycle==='weekly'?(en?'weekly':'semanal'):(en?'every two weeks':'quincenal')}. ${en?'One visit per selected day, no automatic renewal. Dates subject to confirmation.':'Una visita por día seleccionado, sin renovación automática. Fechas sujetas a confirmación.'}`:(en?'Single visit, no automatic recurring charge. Requested schedule subject to confirmation.':'Una visita, sin cobros recurrentes automáticos. Horario solicitado sujeto a confirmación.')}\n${JSON.stringify(c.detail,null,2)}\n${pending.length?(en?'In-person extras: estimate pending. VIICASA will arrange a call/visit after payment.':'Extras en persona: estimación pendiente. VIICASA coordinará llamada/visita después del pago.'):''}\n${en?'Manage email preferences: ':'Preferencias de correo: '}${config.siteUrl.replace(/\/$/,'')}/cuenta`;
-    await enqueue(tx,`${c.id}:${status}:customer`,c.customer_email,`VIICASA · ${label} · ${status}`,body);
-    await enqueue(tx,`${c.id}:${status}:admin`,config.adminEmail,`VIICASA · ${label} · ${status}`,body);
+    const event={'confirmado':'paid','pago recibido en revisión':'review','pago rechazado':'failed','pago vencido':'expired','cancelada':'cancelled'}[status]||'requested';
+    const demo=config.paymentProvider==='demo'||/^sk_test_/.test(config.stripeKey||'');
+    for(const audience of ['customer','team']){
+      const mail=renderViiLifeMail({reference:c.id,issuedAt:now(),customer:{name:c.customer_name,email:c.customer_email,phone:c.customer_phone},selection:c.detail.selection,quote:c.detail.quote,schedule:c.detail.schedule,address:c.detail.address,event,demo,audience,paidMinor:c.due_minor});
+      await enqueue(tx,`${c.id}:${status}:${audience==='team'?'admin':'customer'}`,audience==='team'?config.adminEmail:c.customer_email,mail.subject,mail.body,mail.html);
+    }
     return;
   }
   const label=c.kind==='booking'?'Reservación':'Pedido',subject=`VIICASA · ${label} ${status}`;

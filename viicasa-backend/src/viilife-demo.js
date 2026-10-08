@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import {renderViiLifeMail} from './viilife-mail.js';
 import {id,hash,fail} from './lib.js';
 import {now,key,must,auditDoc} from './firestore-store.js';
 import {defaultCleaningSettings,cleaningPrice,cleaningCoverage} from './cleaning.js';
@@ -27,11 +28,7 @@ export function demoQuote(input,settings,today=now().slice(0,10)){
   return {...price,revision:settings.revision,coverage,dates,large,can_pay:coverage==='inside',demo:true};
 }
 function message(row,event,audience){
-  const q=row.quote,en=row.locale==='en',amount=(q.total_minor/100).toFixed(2)+' '+q.currency;
-  const contact=en?'The ViiLife team will be in touch soon to coordinate the details and your preferred schedule.':'El equipo de ViiLife se pondrá en contacto contigo pronto para coordinar los detalles y tu horario preferido.';
-  const headline=event==='paid'?(en?`Thank you for your ViiLife demo order. ${contact} No money was charged and no real visit has been booked.`:`Gracias por tu pedido de prueba de ViiLife. ${contact} No se cobró dinero ni se reservó una visita real.`):event==='unpaid'?'Large request still unpaid after one hour. Follow up; do not assume why the customer stopped.':(en?`We have received your ViiLife demonstration request. ${contact} You can complete the simulated payment immediately, without waiting for our call.`:`Recibimos tu solicitud de demostración de ViiLife. ${contact} Puedes completar el pago simulado sin esperar nuestra llamada.`);
-  return {subject:`[DEMO VIILIFE] ${audience==='team'?'TEAM · ':''}${q.large?'LARGE REQUEST · ':''}${event==='paid'?'Payment simulated':event==='unpaid'?'Follow-up needed':'Request received'}`,
-    body:`VIILIFE — DEMONSTRATION ONLY\n${headline}\n\n${audience==='customer'?'Customer message preview — delivered only to the test mailbox.\n':''}Reference: ${row.id}\nName: ${row.customer.name}\nCustomer email (not a delivery recipient): ${row.customer.email}\nPhone: ${row.customer.phone}\nService: ${row.selection.service}\n${q.billing.scope==='one_cycle'?`${(q.billing.hourly_minor/100).toFixed(2)} ${q.currency}/h × ${q.billing.hours_per_visit} h × ${q.billing.visits} visits\n`:''}Total: ${amount}\nPreferred dates: ${q.dates.join(', ')}\nPreferred start: ${row.schedule.start_hour}:00 (local time at the property)\nAddress: ${row.address.street}, ${row.address.city}, ${row.address.state}, ${row.address.postal_code}, ${row.address.country}\n\n${en?'The ViiLife team will contact you to coordinate your preferred schedule. This demonstration does not reserve a real visit.':'El equipo de ViiLife se pondrá en contacto para coordinar el horario preferido. Esta demostración no reserva una visita real.'}\nNo subscription or automatic renewal. ${q.estimate_pending.length?'Additional services await a separate estimate.':''}`};
+  return renderViiLifeMail({reference:row.id,issuedAt:row.updated_at||row.created_at,customer:row.customer,selection:row.selection,quote:row.quote,schedule:row.schedule,address:row.address,event,demo:true,audience});
 }
 async function queue(tx,row,event,audience){
   const mailId=key('viilife-demo-mail',`${row.id}:${event}:${audience}`);
@@ -86,7 +83,7 @@ export async function maintainViiLifeDemo(store,config,sender){
       if(sender)await sender({...claimed,recipient:demoRecipient});
       else{
         const transport=nodemailer.createTransport({...config.smtp,requireTLS:true,connectionTimeout:8000,greetingTimeout:8000,socketTimeout:12000,disableFileAccess:true,disableUrlAccess:true});
-        try{const result=await transport.sendMail({from:config.mailFrom,to:demoRecipient,subject:claimed.subject,text:claimed.body,messageId:`<viilife-demo-${claimed.id}@viicasa.com>`});if(!result.accepted?.length)throw Error('SMTP rejected');}finally{transport.close();}
+        try{const result=await transport.sendMail({from:config.mailFrom,to:demoRecipient,subject:claimed.subject,text:claimed.body,...(claimed.html?{html:claimed.html}:{}),messageId:`<viilife-demo-${claimed.id}@viicasa.com>`});if(!result.accepted?.length)throw Error('SMTP rejected');}finally{transport.close();}
       }
     }catch{state='unknown';}
     // Uncertain SMTP outcomes are not retried: avoid duplicate messages.

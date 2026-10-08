@@ -84,14 +84,15 @@ test('isolated ViiLife demo end-to-end, ownership, SMTP and payment safety',asyn
       await createDemoRequest(store,other.id,randomUUID(),{...input,settings_revision:1});await maintainViiLifeDemo(store,baseConfig,async()=>assert.fail('Quota exceeded'));
       assert.equal((await store.list('viilife_demo_mail',{where:[['state','==','pending']]})).length,2);
     });
-    await t.test('small Spanish orders queue contact-soon previews before and after demo payment',async()=>{
+    await t.test('small Spanish orders also receive English HTML contact-soon previews',async()=>{
       const small=await createDemoRequest(store,other.id,randomUUID(),{...input,locale:'es',settings_revision:1,selection:{...input.selection,hours:1},schedule:{...input.schedule,days:['mon']}});
       assert.equal(small.quote.large,false);
       const messages=async()=> (await store.list('viilife_demo_mail')).filter(mail=>mail.request_id===small.id);
       assert.equal((await messages()).length,1);
       await completeDemoRequest(store,other.id,small.id);
       const queued=await messages();assert.equal(queued.length,3);
-      assert.ok(queued.every(mail=>mail.body.includes('El equipo de ViiLife se pondrá en contacto contigo pronto')));
+      assert.ok(queued.every(mail=>mail.body.includes('The ViiLife team will be in touch soon')));
+      assert.ok(queued.every(mail=>mail.html.includes('<html lang="en">')&&mail.html.includes('https://viicasa.com/images/logo-email.png')));
       assert.ok(queued.every(mail=>mail.recipient===demoRecipient));
     });
     await t.test('live cleaning creation and historical real checkout payments are blocked in demo mode',async()=>{

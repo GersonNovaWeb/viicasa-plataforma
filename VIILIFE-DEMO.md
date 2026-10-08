@@ -17,7 +17,11 @@ The platform defaults `VIILIFE_MODE` to `demo`. Only ViiLife changes; ViiShop, p
 
 All team notices **and customer previews** are forced server-side to `gerson@novaweb-agency.com`. The email entered in the form is not used as a delivery recipient. Subjects begin `[DEMO VIILIFE]`. Messages are plain-text transaction summaries, not the Coming Soon welcome templates. Do not use real personal details in a demo.
 
-Each submitted request and completed demo purchase queues a customer preview in the selected language: the ViiLife team will be in touch soon to coordinate details and the preferred schedule. This applies to small and large orders and does not require waiting for admin approval. Existing queued messages retain their original text; test with a new request after deployment.
+Each submitted request and completed demo purchase queues an English customer preview: the ViiLife team will be in touch soon to coordinate details and the preferred schedule. This applies to small and large orders and does not require waiting for admin approval. Existing queued messages retain their original text; test with a new request after deployment.
+
+Emails now include an HTML business receipt/summary plus a plain-text alternative, the VIICASA black header/footer and the first-party logo at `https://viicasa.com/images/logo-email.png`. The receipt uses the saved quote (line items, hours, visits, currency and totals); it does not recalculate prices or invent taxes. Dates remain preferred, not confirmed. Demo receipts explicitly state no money was charged and continue going only to the approved test mailbox. The Firestore live cleaning payment notices also use this English format; failed/expired/cancelled events are summaries, not paid receipts. This change does not enable live payments or change recipients.
+
+Use `npm run preview:viilife-mail` to view synthetic demo data at `http://127.0.0.1:3022/` (`/mobile` for a 390px preview). It never connects to Firestore or SMTP. Run `npm run test:viilife-mail` for rendering, escaping, totals, state labels and mail transport tests. Browser preview does not replace an actual inbox test after deployment.
 
 Hostinger server variables:
 

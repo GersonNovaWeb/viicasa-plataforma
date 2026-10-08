@@ -95,7 +95,7 @@ export async function deliverMail(store,config,transport){
         tx.put('mail_outbox',row.id,updated);return updated;
       });if(!message)continue;
       let success=false;
-      try{await mailer.sendMail({from:config.mailFrom,to:message.recipient,subject:message.subject,text:message.body,messageId:`<${message.id}@viicasa.mail>`});success=true;}catch{}
+      try{await mailer.sendMail({from:config.mailFrom,to:message.recipient,subject:message.subject,text:message.body,...(message.html?{html:message.html}:{}),messageId:`<${message.id}@viicasa.mail>`});success=true;}catch{}
       await store.transaction(async tx=>{
         const current=await tx.get('mail_outbox',message.id);if(!current||current.lease_token!==message.lease_token)return;
         tx.put('mail_outbox',message.id,{...current,status:success?'sent':current.attempts>=10?'failed':'pending',
