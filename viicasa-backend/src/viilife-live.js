@@ -19,6 +19,6 @@ export async function registerViiLifeLive(app,store,config,guard){
   });
 }
 export async function maintainViiLifeLive(store,config){
-  // Follow-up is triggered by a verified paid webhook, never abandonment.
+  // Approval messages are queued transactionally; no abandonment notifications.
   // Keep the maintenance hook compatible with existing callers.
 }

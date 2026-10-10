@@ -5,12 +5,15 @@ const weekdays={mon:'Monday',tue:'Tuesday',wed:'Wednesday',thu:'Thursday',fri:'F
 const date=value=>/^\d{4}-\d{2}-\d{2}/.test(value||'')?new Intl.DateTimeFormat('en-CA',{dateStyle:'long',timeZone:'UTC'}).format(new Date(value)):'Not specified';
 const cash=(minor,currency)=>(minor/100).toFixed(2)+' '+currency;
 
-export function renderViiLifeMail({reference,issuedAt,customer,selection,quote,schedule,address,event='requested',demo=false,audience='customer',paidMinor=quote.total_minor}){
+export function renderViiLifeMail({reference,issuedAt,customer,selection,quote,schedule,address,event='requested',demo=false,audience='customer',paidMinor=quote.total_minor,actionUrl}){
   const paid=event==='paid'||event==='review';
   const status={paid:demo?'Payment simulated':'Payment received',review:demo?'Simulated payment under review':'Payment received — under review',requested:'Request received',unpaid:'Follow-up needed',failed:'Payment unsuccessful',expired:'Payment expired',cancelled:'Order cancelled'}[event]||'Order update';
-  const title=paid?(demo?'Demonstration receipt':'Payment receipt'):'Service request summary';
-  const contact=paid?'The ViiLife team will be in touch soon to coordinate the details and your preferred schedule.':'Please complete payment through Stripe before our team coordinates your visit. No visit has been confirmed.';
-  const intro=event==='unpaid'?'This large request has not completed payment. Please contact the customer to offer assistance; do not assume why they stopped.':event==='review'?'Your payment was received, but the order requires review. Please do not pay again.':paid?'Thank you for choosing ViiLife. Your order details are below.':event==='requested'?'Thank you for your request. Your preferred schedule is subject to confirmation.':'Please review the payment status below. This message does not confirm a visit.';
+  const workflow={approval_requested:{title:audience==='team'?'New large order — approval required':'Request received — awaiting approval',intro:audience==='team'?'A new large ViiLife order requires your review. Contact the customer as needed, then approve payment or cancel the unpaid request in the dashboard.':'Thank you for your ViiLife request. Our team will review your preferred dates and service requirements. We will email you when you can complete payment.',contact:'No payment is due until the administrator approves the request. No money has been charged.'},payment_ready:{title:'Your ViiLife order is ready for payment',intro:'Your request has been approved. You can now complete payment from your ViiLife orders. Sign in using the same account you used to place your request.',contact:'Please open your orders and begin payment within 24 hours of approval. Stripe will display its own payment deadline. Approval is not a payment receipt or a confirmed appointment.'},request_cancelled:{title:'ViiLife request cancelled',intro:'Your unpaid ViiLife request has been cancelled. There is no payment to complete for this request.',contact:'No refund has been issued because this request had no recorded payment. Contact the ViiLife team if you need assistance.'}}[event];
+  const title=workflow?.title||(paid?(demo?'Demonstration receipt':'Payment receipt'):'Service request summary');
+  const contact=workflow?.contact||(paid?'The ViiLife team will be in touch soon to coordinate the details and your preferred schedule.':'Please complete payment through Stripe before our team coordinates your visit. No visit has been confirmed.');
+  const intro=workflow?.intro||(event==='unpaid'?'This large request has not completed payment. Please contact the customer to offer assistance; do not assume why they stopped.':event==='review'?'Your payment was received, but the order requires review. Please do not pay again.':paid?'Thank you for choosing ViiLife. Your order details are below.':event==='requested'?'Thank you for your request. Your preferred schedule is subject to confirmation.':'Please review the payment status below. This message does not confirm a visit.');
+  const link=actionUrl&&/^https?:\/\//.test(actionUrl)?actionUrl:null;
+  const actionLabel=audience==='team'?'Review ViiLife orders':event==='payment_ready'?'View my ViiLife orders and pay':'View my ViiLife orders';
   const demoNote=demo?'DEMONSTRATION ONLY — No money was charged and no real visit has been booked. This is not a tax receipt.':'';
   const b=quote.billing||{},cycle=b.scope==='one_cycle';
   const breakdown=cycle?`${cash(b.hourly_minor,quote.currency)}/h × ${b.hours_per_visit} h × ${b.visits} visits`:'';
@@ -20,7 +23,7 @@ export function renderViiLifeMail({reference,issuedAt,customer,selection,quote,s
   const location=[address.street,address.city,address.state,address.postal_code,address.country==='CA'?'Canada':address.country].filter(Boolean).join(', ');
   const pending=(quote.estimate_pending||[]).map(code=>names[code]||code);
   const items=quote.lines?.length?quote.lines:[{code:selection.service,amount_minor:quote.total_minor}];
-  const details=[['Reference',reference],['Issued',date(issuedAt)],['Status',status],['Customer',customer.name],['Email',customer.email],['Phone',customer.phone],['Service address',location],['Service',names[selection.service]||selection.service],['Plan',plan],['Preferred dates / days',dates],['Preferred arrival',preferredTime]];
+  const details=[['Reference',reference],['Issued',date(issuedAt)],['Status',workflow?.title||status],['Customer',customer.name],['Email',customer.email],['Phone',customer.phone],['Service address',location],['Service',names[selection.service]||selection.service],['Plan',plan],['Preferred dates / days',dates],['Preferred arrival',preferredTime]];
   const amountLabel=paid?(demo?'Simulated payment':'Payment received'):'Amount paid';
   const amount=paid?cash(paidMinor,quote.currency):cash(0,quote.currency);
   const notes=[contact,'Preferred dates and arrival times are not a confirmed appointment. No subscription or automatic renewal.',...(pending.length?[`Not included in the total — separate estimate required: ${pending.join(', ')}.`]:[]),'This summary does not provide a tax breakdown.'];
@@ -35,6 +38,7 @@ export function renderViiLifeMail({reference,issuedAt,customer,selection,quote,s
 <p style="margin:0 0 8px;color:#95772c;font-size:11px;letter-spacing:3px;">VIILIFE · HOME CARE${audience==='team'?' · TEAM COPY':''}</p>
 <h1 style="margin:0 0 12px;font-size:28px;line-height:34px;font-weight:400;">${escape(title)}</h1>
 <p style="margin:0 0 24px;">${escape(intro)}</p>
+${link?`<p style="margin:24px 0;"><a href="${escape(link)}" style="display:inline-block;padding:16px 22px;background-color:#203d35;color:#ffffff;text-decoration:none;">${escape(actionLabel)}</a></p>`:''}
 ${demo?`<p style="padding:14px;background-color:#fff5dc;border-left:3px solid #b58d2c;font-size:12px;line-height:19px;">${escape(demoNote)}${audience==='customer'?'<br>Customer preview — delivered only to the test mailbox.':''}</p>`:''}
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;font-size:13px;line-height:20px;">${details.map(([k,v])=>tr(k,v)).join('')}</table>
 <h2 style="margin:28px 0 12px;font-size:17px;font-weight:400;">Order breakdown</h2>
@@ -51,5 +55,5 @@ ${items.map(i=>`<tr><td style="padding:12px 10px;border-bottom:1px solid #eeeeee
 <tr><td align="center" style="background-color:#111111;padding:26px 30px 0;color:#777777;font-size:10px;line-height:16px;">This email may contain confidential or privileged information intended exclusively for the recipient.</td></tr>
 <tr><td align="center" style="background-color:#111111;padding:18px 20px 25px;color:#777777;font-size:10px;line-height:16px;">© 2026 VIICASA. All rights reserved.</td></tr></table></body></html>`;
   const subject=`${demo?'[DEMO VIILIFE]':'ViiLife'} ${audience==='team'?'TEAM · ':''}${quote.large?'LARGE REQUEST · ':''}${event==='unpaid'?'Follow-up needed':title+' · '+status}`;
-  return {subject,body,html};
+  return {subject,body:body+(link?'\n\n'+actionLabel+': '+link:''),html};
 }

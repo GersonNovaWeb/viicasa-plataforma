@@ -10,6 +10,7 @@ export async function startPayment(store,config,gateway,guestId,checkoutId){
     const c=must(await tx.get('checkouts',checkoutId),'Operación no encontrada');
     if(c.guest_id!==guestId)fail(404,'Operación no encontrada');
     if(c.kind==='cleaning'&&config.viilifeMode==='demo')fail(409,'ViiLife está en demostración; no se permiten cobros reales.');
+    if(c.kind==='cleaning'&&c.approval&&c.approval.status!=='approved')fail(409,'El administrador debe aprobar este pedido antes del pago.');
     if(c.status!=='pending'||c.expires_at<=now())fail(409,'La operación ya no admite pagos');
     let p=await tx.get('payments',c.id);
     if(p){
@@ -57,7 +58,7 @@ export async function settlePayment(store,config,event){
     if(p.status==='paid')return{received:true,ignored:true};
     if(event.outcome==='paid'){
       tx.put('payments',p.id,{...p,status:'paid'});
-      const canConfirm=c.status==='pending'&&c.expires_at>now()&&await updateOccupancy(tx,c,'confirmed');
+      const canConfirm=c.status==='pending'&&(!c.approval||c.approval.status==='approved')&&c.expires_at>now()&&await updateOccupancy(tx,c,'confirmed');
       if(canConfirm && c.expires_at>now()){
         tx.put('checkouts',c.id,{...c,status:'confirmed'});await notice(tx,c,'confirmado',config);
       }else{

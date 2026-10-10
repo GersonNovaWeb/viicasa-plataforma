@@ -53,12 +53,12 @@ test('ViiLife live flow: persistence, ownership, signed webhook, receipt and lar
   await store.set('sessions',hash(admin),{user_id:adminId,auth_version:1,expires_at:afterMinutes(15)});
   guest=ok(await req('/guest-sessions',{}),201);other=ok(await req('/guest-sessions',{}),201);
   await store.set('cleaning_preferences',guest.id,{marketing:true});
-  await t.test('large requests save before payment and do not need admin approval',async()=>{
+  await t.test('large requests wait for approval and queue two request notices',async()=>{
    const idem=randomUUID();first=ok(await req('/viilife/requests',input,guest.token,'POST',idem),201);
    assert.equal(ok(await req('/viilife/requests',input,guest.token,'POST',idem),201).checkout.id,first.checkout.id);
    assert.equal(first.checkout.total_minor,149985);assert.equal(first.request.flow,'quick');assert.equal(first.request.guest_id,undefined);
    assert.equal((await store.get('cleaning_preferences',guest.id)).marketing,true);
-   assert.equal(await store.count('mail_outbox'),0);assert.equal(await store.count('viilife_demo_requests'),0);assert.equal(await store.count('properties'),0);
+   assert.equal(first.checkout.status,'awaiting_approval');assert.equal(await store.count('mail_outbox'),2);assert.equal(await store.count('viilife_demo_requests'),0);assert.equal(await store.count('properties'),0);
    ok(await req('/admin/cleaning/requests/'+first.request.id,{followup_status:'contacted',notes:''},admin,'PATCH'),409);
    ok(await req('/viilife/requests',{...input,total_minor:1},guest.token),400);
    ok(await req('/viilife/requests',{...input,customer:{...input.customer,consent:false}},guest.token),400);
@@ -66,6 +66,9 @@ test('ViiLife live flow: persistence, ownership, signed webhook, receipt and lar
   });
   await t.test('other customers cannot read, pay or cancel the checkout',async()=>{
    for(const [suffix,body]of [['',undefined],['/payment',{}],['/cancel',{}]])ok(await req('/checkouts/'+first.checkout.id+suffix,body,other.token),404);
+   ok(await req('/checkouts/'+first.checkout.id+'/payment',{},guest.token),409);
+   ok(await req('/admin/cleaning/requests/'+first.request.id+'/review',{action:'approve'},guest.token),401);
+   ok(await req('/admin/cleaning/requests/'+first.request.id+'/review',{action:'approve'},admin));
    payment=ok(await req('/checkouts/'+first.checkout.id+'/payment',{},guest.token));assert.equal(payment.amount_minor,149985);
    ok(await req('/checkouts/'+first.checkout.id+'/payment',{},guest.token));assert.equal(gatewayCalls,1);
   });
@@ -77,8 +80,8 @@ test('ViiLife live flow: persistence, ownership, signed webhook, receipt and lar
    ok(await send({...event,id:'evt_wrong',data:{object:{...event.data.object,amount_total:1}}}),409);
    ok(await send({...event,id:'evt_wrong_currency',data:{object:{...event.data.object,currency:'usd'}}}),409);
    ok(await send({...event,id:'evt_not_paid',data:{object:{...event.data.object,payment_status:'unpaid'}}}));assert.equal((await store.get('checkouts',first.checkout.id)).status,'pending');
-   ok(await send(event));ok(await send(event));assert.equal((await store.get('checkouts',first.checkout.id)).status,'confirmed');assert.equal(await store.count('mail_outbox'),2);
-   const sent=[];const result=await deliverMail(store,{...config,mailMode:'smtp'},{sendMail:async m=>sent.push(m)});assert.equal(result.sent,2);assert.ok(sent.every(m=>m.html.includes('https://viicasa.com/images/logo-email.png')));assert.ok(sent.some(m=>m.text.includes('1499.85 CAD')&&m.html.includes('Demonstration receipt')));
+   ok(await send(event));ok(await send(event));assert.equal((await store.get('checkouts',first.checkout.id)).status,'confirmed');assert.equal(await store.count('mail_outbox'),5);
+   const sent=[];const result=await deliverMail(store,{...config,mailMode:'smtp'},{sendMail:async m=>sent.push(m)});assert.equal(result.sent,5);assert.ok(sent.every(m=>m.html.includes('https://viicasa.com/images/logo-email.png')));assert.ok(sent.some(m=>m.text.includes('1499.85 CAD')&&m.html.includes('Demonstration receipt')));
    await deliverMail(store,{...config,mailMode:'smtp'},{sendMail:async()=>assert.fail('Duplicate email')});
    ok(await req('/admin/cleaning/requests/'+first.request.id,{followup_status:'contacted',notes:'Payment verified'},admin,'PATCH'));
   });
@@ -90,7 +93,7 @@ test('ViiLife live flow: persistence, ownership, signed webhook, receipt and lar
    const large=ok(await req('/viilife/requests',input,guest.token),201),row=await store.get('cleaning_requests',large.request.id);
    await store.set('cleaning_requests',row.id,{...row,created_at:new Date(Date.now()-3700000).toISOString()});
    await maintainViiLifeLive(store,config);await maintainViiLifeLive(store,config);
-   const followups=(await store.list('mail_outbox')).filter(m=>m.subject.includes('Follow-up needed'));assert.equal(followups.length,0);assert.equal((await store.list('mail_outbox')).filter(m=>m.body.includes(large.checkout.id)).length,0);
+   const followups=(await store.list('mail_outbox')).filter(m=>m.subject.includes('Follow-up needed'));assert.equal(followups.length,0);assert.equal((await store.list('mail_outbox')).filter(m=>m.body.includes(large.checkout.id)).length,2);
   });
   await t.test('production requires authenticated identity and configured final prices',async()=>{
    await assert.rejects(createCleaningRequest(store,{...config,production:true},guest.id,randomUUID(),{...input,pricing_version:2},liveViiLifeQuote),e=>e.statusCode===401);

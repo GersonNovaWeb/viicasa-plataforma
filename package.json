@@ -11,6 +11,7 @@
     "dev:viilife": "node viicasa-frontend-prototype/dev-viilife.mjs",
     "test:viilife-demo": "node --test test/viilife-demo.test.mjs",
     "test:viilife-live": "node --test test/viilife-live.test.mjs",
+    "test:viilife-approval": "node --test test/viilife-approval.test.mjs test/viilife-admin-ui.test.mjs",
     "test:viilife-mail": "node --test test/viilife-mail.test.mjs",
     "test:viilife-actions": "node --test test/viilife-actions.test.mjs",
     "test:scroll": "node --test test/scroll-navigation.test.mjs test/viilife-actions.test.mjs",

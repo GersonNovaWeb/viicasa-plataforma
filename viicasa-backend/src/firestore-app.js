@@ -25,6 +25,7 @@ export async function buildFirestoreApp(config,options={}){
     trustProxy:config.trustProxy,bodyLimit:256*1024,ajv:{customOptions:{removeAdditional:false}}});
   app.decorate('store',store);app.decorate('db',store);
   const guard=guards(store),gateway=options.gateway||paymentGateway(config);
+  const mailDelivery={last_attempt:null,last_error:null};
   app.addHook('onClose',async()=>{if(!options.store)await store.close();});
   app.addHook('onSend',async(request,reply,payload)=>{if(!request.url.startsWith('/v1/media/'))reply.header('Cache-Control','no-store');return payload;});
   app.setErrorHandler((error,request,reply)=>{
@@ -94,13 +95,17 @@ export async function buildFirestoreApp(config,options={}){
     const checkouts=await Promise.all(['order','booking','cleaning'].flatMap(kind=>['pending','confirmed','cancelled','expired','payment_review'].map(async status=>({kind,status,count:await store.count('checkouts',[['kind','==',kind],['status','==',status]])}))));
     return{properties:{total:totals[0],published:totals[1]},products:{total:totals[2],published:totals[3]},inquiries:{unread:totals[4]},checkouts};
   });
-  app.get('/v1/admin/mail-status',{preHandler:guard.admin(['admin']),schema:adminSchema('Operación técnica')},async()=>({mode:config.mailMode,
+  app.get('/v1/admin/mail-status',{preHandler:guard.admin(['admin']),schema:adminSchema('Operación técnica')},async()=>({mode:config.mailMode,delivery:{...mailDelivery},
     sent:await store.count('mail_outbox',[['status','==','sent']]),pending:await store.count('mail_outbox',[['status','in',['pending','processing']]]),failed:await store.count('mail_outbox',[['status','==','failed']])}));
   app.get('/v1/admin/audit',{preHandler:guard.admin(['admin']),schema:adminSchema('Operación técnica',{querystring:pageSchema})},request=>listPage(store,'audit_log',request.query));
   app.decorate('maintenance',async()=>{
     await maintainViiLifeDemo(store,config);
     await maintainViiLifeLive(store,config);
-    await expireHolds(store);await deliverMail(store,config);
+    // A missing expiry index must not prevent the independent email queue running.
+    try{await expireHolds(store);}catch(error){console.error('VIICASA maintenance: checkout expiry failed',typeof error.code==='number'?error.code:'internal');}
+    mailDelivery.last_attempt=now();
+    try{const result=await deliverMail(store,config);mailDelivery.last_error=result.failed?'SMTP_DELIVERY_FAILED':null;}
+    catch(error){mailDelivery.last_error=error.code===9?'FIRESTORE_PRECONDITION':'MAIL_QUEUE_FAILED';console.error('VIICASA mail queue:',mailDelivery.last_error);}
     const expired=await store.list('sessions',{where:[['expires_at','<=',now()]],limit:100});
     await store.transaction(async tx=>{for(const row of expired)tx.remove('sessions',row.id);});
   });

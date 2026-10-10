@@ -13,7 +13,7 @@ http.createServer(async (req,res) => {
     const pathname = decodeURIComponent(url.pathname);
     const file = /^(\/|\/(shop|viilife|viiconcierge|propiedades|coleccion|cuenta|checkout|admin|privacidad|pago\/resultado|pago\/cancelado)(\/[^.]+)?)$/.test(pathname) ? 'index.html' : pathname.slice(1);
     const target = resolve(root, file);
-    if (!target.startsWith(root.endsWith(sep) ? root : root+sep) || !['index.html','app.js','styles.css','platform.js','platform.css','currency-ui.js','cleaning-ui.js','cleaning.css','viilife-demo-ui.js','email-auth-ui.js','viilife-actions.js','scroll-navigation.js'].includes(file) && !file.startsWith('assets/')) {
+    if (!target.startsWith(root.endsWith(sep) ? root : root+sep) || !['index.html','app.js','styles.css','platform.js','platform.css','currency-ui.js','cleaning-ui.js','cleaning.css','viilife-demo-ui.js','email-auth-ui.js','viilife-actions.js','scroll-navigation.js','viilife-admin-ui.js'].includes(file) && !file.startsWith('assets/')) {
       res.writeHead(404).end('Not found');return;
     }
     const body = await readFile(target);

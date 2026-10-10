@@ -151,3 +151,36 @@ Stripe externo ni se enviaron correos reales para este ajuste.
 - Pendiente: validación visual en escritorio y móvil. El navegador no pudo
   conectar con la vista aislada local (timeout). Esta revisión no valida
   Firestore, correos ni pagos, ni se ha desplegado en Hostinger.
+
+### Aprobación de pedidos grandes — 10 de octubre de 2026
+
+Esta regla sustituye la instrucción anterior de pagar primero SOLO para pedidos
+nuevos del flujo rápido de ViiLife que superen 3 horas por visita O 3 días por
+ciclo. Los pedidos pequeños mantienen el pago directo. Los pedidos históricos
+no se migran y ningún pedido pagado vuelve a solicitar un cobro.
+
+- Pedido grande: `awaiting_approval`, sin plazo de pago mientras espera. Se
+  encolan avisos en inglés al comprador y a `ADMIN_EMAIL`, con la marca VIICASA.
+- Panel ViiLife: tarifas plegables, tarjetas, filtros y contadores de la página,
+  notas y casilla Contactado independiente de la aprobación.
+- Aprobar pago es una acción administrativa explícita: pasa a `pending` por
+  24 horas para iniciar Stripe y encola una sola notificación al comprador con
+  enlace a `SITE_URL/cuenta#viilife-orders`. Iniciar sesión conserva la propiedad
+  del pedido; el enlace no concede acceso ni contiene tokens.
+- Cancelar solicitud de pago notifica al comprador y bloquea pagar. No cancela
+  pagos ya iniciados en Stripe ni emite reembolsos: esos intentos se deben revisar
+  antes de proceder. Los pedidos pagados están protegidos también en el servidor.
+- La API exige rol admin para contacto/aprobación/cancelación y no permite saltar
+  la aprobación solicitando directamente una sesión Stripe.
+- Pruebas locales con almacenamiento en memoria y SMTP simulado: límites,
+  idempotencia, permisos HTTP, propiedad, recibos y renderizado de controles.
+  No hubo envíos de correo, compras ni escrituras en Firestore real.
+- Pendiente: prueba visual (el navegador no pudo acceder a localhost), prueba
+  contra Firestore y entrega real de correo en Hostinger. Las pruebas que
+  necesitan el emulador no se consideran validadas en esta revisión.
+
+Para desplegar: mantener `VIILIFE_MODE=live`, `PAYMENT_PROVIDER=stripe` con claves
+de PRUEBA para QA, `MAIL_MODE=smtp`, SMTP válido y `ADMIN_EMAIL` correcto. El índice
+`mail_outbox` (`status` ascendente + `next_attempt` ascendente, alcance colección)
+debe estar Habilitado. El panel muestra el estado de la cola y errores sanitizados;
+no garantiza recepción en bandeja. El worker intenta procesar correo cada 30 s.

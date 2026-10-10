@@ -2,6 +2,7 @@ import {id,hash,fail,money} from './lib.js';
 import {now,afterMinutes,key,must,auditDoc} from './firestore-store.js';
 import {enqueue,safeCheckout} from './firestore-commerce.js';
 import * as s from './schemas.js';
+import {approvalNotice,reviewViiLifeRequest} from './viilife-approval.js';
 
 export const focusRooms=['bedroom','bathroom','living','dining','kitchen','entrance','office','studio','hallway','patio'];
 export const visitExtras=['setup','decoration','removals'];
@@ -95,6 +96,7 @@ export async function createCleaningRequest(store,config,guestId,idempotencyKey,
     if(quote.coverage==='inside'&&!quote.can_pay)fail(503,'El servicio todavía no admite pagos.');
     const products=quote.coverage==='outside'?await tx.list('products',{where:[['published','==',true],['archived','==',false]],limit:3}):[];
     const timestamp=now(),rid=id(),checkoutId=quote.can_pay?id():null;
+    const needsApproval=Boolean(quick&&checkoutId&&quote.large);
     const detail={...input,quote,terms:input.locale==='en'?settings.terms_en:settings.terms_es,payment_scope:quote.billing.scope,schedule_status:'requested',followup_status:input.selection.extras.length?'estimate_pending':'not_required'};
     const request={id:rid,guest_id:guestId,...detail,...(quick?{flow:'quick',followup_status:quote.large?'new':detail.followup_status}:{}),status:checkoutId?'awaiting_payment':quote.coverage==='outside'?'outside_area':'coverage_review',checkout_id:checkoutId,created_at:timestamp};
     let checkout=null;
@@ -102,12 +104,17 @@ export async function createCleaningRequest(store,config,guestId,idempotencyKey,
       checkout={id:checkoutId,guest_id:guestId,request_hash:requestHash,idempotency_key:idempotencyKey,kind:'cleaning',status:'pending',customer_name:input.customer.name,
         customer_email:input.customer.email.toLowerCase(),customer_phone:input.customer.phone,total_minor:quote.total_minor,due_minor:quote.total_minor,currency:quote.currency,
         detail:{...detail,cleaning_request_id:rid,property_name:'ViiLife · Home cleaning',consent:true,consent_recorded_at:timestamp},created_at:timestamp,expires_at:afterMinutes(config.holdMinutes)};
+      if(needsApproval){
+        checkout={...checkout,status:'awaiting_approval',expires_at:null,approval:{status:'pending',requested_at:timestamp}};
+        request.status='awaiting_approval';
+      }
       tx.create('checkouts',checkoutId,checkout);
     }
     tx.create('cleaning_requests',rid,request);tx.create('cleaning_idempotency',index,{request_id:rid,checkout_id:checkoutId,request_hash:requestHash});
+    if(needsApproval)await approvalNotice(tx,checkout,'approval_requested',config);
     // Consent is explicit and editable from the customer's account; no cs_* writes.
     if(!quick)tx.put('cleaning_preferences',guestId,{marketing:input.marketing,email:input.customer.email.toLowerCase(),recorded_at:timestamp});
-    // Saving a payable request is not a sale. Receipts and team alerts are
+    // Approval requests have their own notices above. Payment receipts are
     // queued only after Stripe confirms payment through its signed webhook.
     if(!checkoutId){
       const english=input.locale==='en',outside=quote.coverage==='outside';
@@ -121,6 +128,7 @@ export async function createCleaningRequest(store,config,guestId,idempotencyKey,
   });
 }
 export async function registerCleaning(app,store,config,guard){
+  app.post('/v1/admin/cleaning/requests/:id/review',{preHandler:guard.admin(['admin']),schema:{params:s.idParams,body:s.object({action:s.choice(['contact','approve','cancel']),contacted:s.bool,notes:s.str(2000,0)},['action'])}},r=>reviewViiLifeRequest(store,config,r.params.id,r.user.id,r.body));
   app.get('/v1/cleaning/settings',async()=>getCleaningSettings(store));
   app.post('/v1/cleaning/quote',{schema:{body:cleaningQuoteBody}},r=>quoteCleaning(store,r.body));
   app.post('/v1/cleaning/requests',{preHandler:guard.guest,schema:{body:cleaningRequestBody,headers:s.keyHeader},config:{rateLimit:{max:10,timeWindow:'1 minute'}}},async(r,reply)=>{const result=await createCleaningRequest(store,config,r.guest.id,r.headers['idempotency-key'],r.body);reply.code(201);return result;});
@@ -130,7 +138,7 @@ export async function registerCleaning(app,store,config,guard){
   app.put('/v1/admin/cleaning/settings',{preHandler:guard.admin(['admin']),schema:{body:cleaningSettingsBody}},r=>{if(config.viilifeMode==='live'&&r.body.currency!=='CAD')fail(400,'La moneda aprobada para ViiLife es CAD.');return saveCleaningSettings(store,r.body,r.user.id);});
   app.get('/v1/admin/cleaning/requests',{preHandler:guard.admin(['admin','support','viewer']),schema:{querystring:s.object({cursor:s.uuid},[])}},async r=>{
     const rows=await store.list('cleaning_requests',{order:[['__name__','asc']],limit:51,...(r.query.cursor?{cursor:[r.query.cursor]}:{})});
-    const items=await Promise.all(rows.slice(0,50).map(async row=>{const {guest_id,...safe}=row;const checkout=row.checkout_id?await store.get('checkouts',row.checkout_id):null;const preferences=await store.get('cleaning_preferences',guest_id);return {...safe,current_marketing:preferences?.marketing===true,payment_status:checkout?.status||null};}));
+    const items=await Promise.all(rows.slice(0,50).map(async row=>{const {guest_id,...safe}=row;const checkout=row.checkout_id?await store.get('checkouts',row.checkout_id):null;const preferences=await store.get('cleaning_preferences',guest_id);const payment=row.checkout_id?await store.get('payments',row.checkout_id):null;return {...safe,current_marketing:preferences?.marketing===true,payment_status:checkout?.status||null,approval:checkout?.approval||null,payment_started:Boolean(payment),amount_paid:payment?.status==='paid'};}));
     return {items,next_cursor:rows.length>50?items.at(-1).id:null};
   });
   app.patch('/v1/admin/cleaning/requests/:id',{preHandler:guard.admin(['admin','support']),schema:{params:s.idParams,body:s.object({followup_status:s.choice(['estimate_pending','contacted','visit_scheduled','completed']),notes:s.str(2000,0)})}},async r=>store.transaction(async tx=>{

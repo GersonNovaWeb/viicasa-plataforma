@@ -167,6 +167,7 @@ export async function cancelCheckout(store,config,checkoutId,guestId,actor=null)
     if(guestId&&c.guest_id!==guestId)fail(404,'Operación no encontrada');
     if(c.status==='cancelled')return safeCheckout(c);
     if(c.status!=='pending')fail(409,'Solo se cancelan operaciones pendientes; las confirmadas requieren revisión y devolución');
+    if(c.kind==='cleaning'&&await tx.get('payments',c.id))fail(409,'Existe un intento de pago en Stripe. Revisa su estado antes de cancelar.');
     await release(tx,c,'cancelled');await notice(tx,c,'cancelada',config);auditDoc(tx,actor,'checkout.cancel',c.id);
     return safeCheckout({...c,status:'cancelled'});
   });
