@@ -1,3 +1,5 @@
+import {viilifeActions} from './viilife-actions.js';
+import {scrollFeedTo,resetPageScroll} from './scroll-navigation.js';
 const $ = s => document.querySelector(s);
 const reduced = matchMedia('(prefers-reduced-motion: reduce)');
 let lang = 'es';
@@ -50,9 +52,9 @@ function activate(index){
   $('#next').innerHTML=`${continuation&&index===2?t('service'):t(atEnd?'restart':'next')} <span aria-hidden="true">${atEnd?'↑':'↓'}</span>`;
   setMediaState();
 }
-function go(index){const target=index===3?continuation:document.querySelectorAll('.scene')[index];target?.scrollIntoView({behavior:reduced.matches?'instant':'smooth',block:'start'});}
+function go(index){const target=index===3?continuation:document.querySelectorAll('.scene')[index];scrollFeedTo(feed,target,{behavior:reduced.matches?'instant':'smooth'});}
 export function attachServiceForm(section){
-  continuation=section;observer?.disconnect();
+  continuation=section;observer?.disconnect();feed.classList.add('has-service-form');
   $('#dots').insertAdjacentHTML('beforeend',`<button aria-label="${lang==='es'?'Elegir servicio':'Choose service'}" data-go="3">04</button>`);
   $('#dots button[data-go="3"]').onclick=()=>go(3);$('.rail-total').textContent='04';
   const sync=()=>{
@@ -71,7 +73,7 @@ function render(){
   $('#navigation').innerHTML=['shop','viiconcierge','viilife'].map(p=>`<a href="/${p}" ${p===page?'aria-current="page"':''}>${{shop:'ViiShop',viiconcierge:'ViiConcierge',viilife:'ViiLife'}[p]}</a>`).join('');
   $('#navigation').ariaLabel=lang==='es'?'Servicios':'Services';$('.rail').ariaLabel=lang==='es'?'Secciones':'Sections';$('.skip').textContent=lang==='es'?'Ir al contenido':'Skip to content';feed.ariaLabel=lang==='es'?'Explorar servicios':'Explore services';$('#account').textContent=t('account');$('#rail-label').textContent=t('label');$('#prototype').textContent=t('prototype');
   document.querySelectorAll('[data-language]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.language===lang)));
-  feed.innerHTML=scenes[page].map((s,i)=>{const c=s[lang];return `<section class="scene" data-tone="${s.tone}" aria-labelledby="title-${i}"><div class="visual"><img src="/assets/${s.image}" alt="" ${i===0?'fetchpriority="high"':'loading="lazy"'}>${s.video?`<video data-index="${i}" data-src="${s.video}" data-mobile-src="${s.videoMobile||s.video}" poster="/assets/${s.image}" muted loop playsinline preload="none" aria-label="${c[0]}"></video>`:''}</div><div class="scene-copy"><p class="eyebrow">${c[0]}</p><${i===0?'h1':'h2'} id="title-${i}">${c[1]}<br><em>${c[2]}</em></${i===0?'h1':'h2'}><p class="description">${c[3]}</p><div class="cta-row"><button class="primary" data-detail="${i}">${t(page==='shop'?'shop':'service')}<span aria-hidden="true">↗</span></button><button class="text-link" data-about>${t('about')}</button></div></div><div class="scene-caption"><strong>${c[4]}</strong>${c[5]}</div>${s.video&&!s.silent?`<div class="media-buttons"><button data-video-pause="${i}">${t('videoPlay')}</button>${s.silent?'':`<button data-sound="${i}">${t('sound')}</button>`}</div>`:''}</section>`;}).join('');
+  feed.innerHTML=scenes[page].map((s,i)=>{const c=s[lang];return `<section class="scene" data-tone="${s.tone}" aria-labelledby="title-${i}"><div class="visual"><img src="/assets/${s.image}" alt="" ${i===0?'fetchpriority="high"':'loading="lazy"'}>${s.video?`<video data-index="${i}" data-src="${s.video}" data-mobile-src="${s.videoMobile||s.video}" poster="/assets/${s.image}" muted loop playsinline preload="none" aria-label="${c[0]}"></video>`:''}</div><div class="scene-copy"><p class="eyebrow">${c[0]}</p><${i===0?'h1':'h2'} id="title-${i}">${c[1]}<br><em>${c[2]}</em></${i===0?'h1':'h2'}><p class="description">${c[3]}</p>${page==='viilife'?viilifeActions(i,lang):`<div class="cta-row"><button class="primary" data-detail="${i}">${t(page==='shop'?'shop':'service')}<span aria-hidden="true">↗</span></button><button class="text-link" data-about>${t('about')}</button></div>`}</div><div class="scene-caption"><strong>${c[4]}</strong>${c[5]}</div>${s.video&&!s.silent?`<div class="media-buttons"><button data-video-pause="${i}">${t('videoPlay')}</button>${s.silent?'':`<button data-sound="${i}">${t('sound')}</button>`}</div>`:''}</section>`;}).join('');
   $('#dots').innerHTML=scenes[page].map((_,i)=>`<button aria-label="${lang==='es'?'Sección':'Section'} ${i+1}" data-go="${i}">0${i+1}</button>`).join('');
   document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>go(Number(b.dataset.go)));
   document.querySelectorAll('[data-detail]').forEach(b=>b.onclick=()=>detail(Number(b.dataset.detail)));
@@ -79,7 +81,7 @@ function render(){
   document.querySelectorAll('video').forEach(v=>{v.muted=true;v.onplaying=()=>v.classList.add('ready');v.onplay=()=>{const b=document.querySelector(`[data-video-pause="${v.dataset.index}"]`);if(b)b.textContent=t('videoPause');};v.onpause=()=>{const b=document.querySelector(`[data-video-pause="${v.dataset.index}"]`);if(b)b.textContent=t('videoPlay');};v.onerror=()=>{v.hidden=true;};});
   document.querySelectorAll('[data-sound]').forEach(b=>b.onclick=()=>{const v=document.querySelector(`video[data-index="${b.dataset.sound}"]`);v.muted=!v.muted;b.textContent=t(v.muted?'sound':'mute');});
   document.querySelectorAll('[data-video-pause]').forEach(b=>b.onclick=()=>{const v=document.querySelector(`video[data-index="${b.dataset.videoPause}"]`);if(v.paused){delete v.dataset.userPaused;playVideo(v);}else{v.dataset.userPaused='true';v.pause();}});
-  activate(active);feed.scrollTo({top:document.querySelectorAll('.scene')[active].offsetTop,behavior:'instant'});
+  active=0;activate(active);resetPageScroll();
   observer=new IntersectionObserver(entries=>{for(const e of entries){if(e.isIntersecting&&e.intersectionRatio>=.5)activate([...feed.children].indexOf(e.target));}},{root:feed,threshold:[.5,.7]});[...feed.children].forEach(s=>observer.observe(s));
 }
 document.querySelectorAll('[data-language]').forEach(b=>b.onclick=()=>{lang=b.dataset.language;try{localStorage.setItem('viicasa-prototype-language',lang);}catch{/* optional storage */}render();});

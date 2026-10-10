@@ -6,25 +6,25 @@ import {saveSocialCustomer,publicCustomer,listRegisteredCustomers} from '../viic
 import {key,openFirestore} from '../viicasa-backend/src/firestore-store.js';
 import {configFromEnv} from '../viicasa-backend/src/config.js';
 
-const enabled={google:true,apple:true,facebook:true};
+const enabled={google:true,apple:true,email:true,facebook:false};
 const identity=(provider='google.com',uid='qa-user')=>({uid,email:'qa@example.invalid',name:'QA Customer',email_verified:true,auth_time:1000,firebase:{sign_in_provider:provider}});
 test('social providers are opt-in and unavailable in isolated local mode',()=>{
-  assert.deepEqual(enabledSocialProviders({},false),{google:false,apple:false,facebook:false});
-  assert.deepEqual(enabledSocialProviders({FIREBASE_WEB_API_KEY:'public-fixture'},false),{google:true,apple:false,facebook:false});
-  const env={FIREBASE_WEB_API_KEY:'public-fixture',AUTH_APPLE_ENABLED:'true',AUTH_FACEBOOK_ENABLED:'true'};
+  assert.deepEqual(enabledSocialProviders({},false),{google:false,apple:false,email:false,facebook:false});
+  assert.deepEqual(enabledSocialProviders({FIREBASE_WEB_API_KEY:'public-fixture'},false),{google:true,apple:false,email:false,facebook:false});
+  const env={FIREBASE_WEB_API_KEY:'public-fixture',AUTH_APPLE_ENABLED:'true',AUTH_EMAIL_ENABLED:'true',AUTH_FACEBOOK_ENABLED:'true'};
   assert.deepEqual(enabledSocialProviders(env,false),enabled);
-  assert.deepEqual(enabledSocialProviders(env,true),{google:false,apple:false,facebook:false});
+  assert.deepEqual(enabledSocialProviders(env,true),{google:false,apple:false,email:false,facebook:false});
 });
 test('three verified Firebase social providers accepted with recent authentication',()=>{
-  for(const p of ['google.com','apple.com','facebook.com'])assert.equal(validateSocialIdentity(identity(p),enabled,{fresh:true,now:1100}),p);
+  for(const p of ['google.com','apple.com','password'])assert.equal(validateSocialIdentity(identity(p),enabled,{fresh:true,now:1100}),p);
 });
-test('unverified or missing email is never trusted, including for Facebook',()=>{
-  for(const email_verified of [false,undefined,'true'])assert.throws(()=>validateSocialIdentity({...identity('facebook.com'),email_verified},enabled),/Verifica/);
+test('unverified or missing email is never trusted, including for email/password',()=>{
+  for(const email_verified of [false,undefined,'true'])assert.throws(()=>validateSocialIdentity({...identity('password'),email_verified},enabled),/Verifica/);
   for(const email of [undefined,'',' '])assert.throws(()=>validateSocialIdentity({...identity(),email},enabled),/correo/);
   assert.throws(()=>validateSocialIdentity({...identity(),uid:''},enabled),/Identidad/);
 });
 test('disabled, unknown and mismatched providers cannot create a session',()=>{
-  assert.throws(()=>validateSocialIdentity(identity('password'),enabled),/Proveedor/);
+  assert.throws(()=>validateSocialIdentity(identity('facebook.com'),enabled),/Proveedor/);
   assert.throws(()=>validateSocialIdentity(identity('apple.com'),{...enabled,apple:false}),/Proveedor/);
   assert.throws(()=>validateSocialIdentity(identity('apple.com'),enabled,{expectedProvider:'google.com'}),/Proveedor/);
 });
@@ -63,12 +63,12 @@ test('legacy Google history is preserved; linked providers share UID without dup
 });
 test('different Firebase UIDs never merge by email; relay emails and all providers appear in admin list',async()=>{
   const store=memoryStore();
-  for(const [i,p]of ['google.com','apple.com','facebook.com'].entries())await saveSocialCustomer(store,identity(p,'user-'+i),'CA','fixture-'+i);
+  for(const [i,p]of ['google.com','apple.com','password'].entries())await saveSocialCustomer(store,identity(p,'user-'+i),'CA','fixture-'+i);
   await saveSocialCustomer(store,{...identity('apple.com','relay'),email:'example@privaterelay.appleid.com'},'US','fixture-relay');
   const page=await listRegisteredCustomers(store);
   assert.equal(page.items.length,4);
   assert.equal(new Set((await store.list('platform_accounts')).map(a=>a.guest_id)).size,4);
-  assert.ok(page.items.some(p=>p.login_provider==='facebook.com'));
+  assert.ok(page.items.some(p=>p.login_provider==='password'));
   for(const row of page.items){assert.equal(row.email_verified,true);assert.equal(row.firebase_uid,undefined);assert.equal(row.google_uid,undefined);}
 });
 test('old records have unknown verification status, not a fabricated verification badge',()=>{
@@ -78,7 +78,7 @@ test('old records have unknown verification status, not a fabricated verificatio
 test('multi-provider persistence works in the isolated Firestore emulator',{skip:!process.env.TEST_FIRESTORE_HOST},async()=>{
   const store=await openFirestore(configFromEnv({DATABASE_DRIVER:'firestore',FIREBASE_MODE:'emulator',FIREBASE_PROJECT_ID:'demo-social-'+randomUUID().slice(0,8),FIRESTORE_EMULATOR_HOST:process.env.TEST_FIRESTORE_HOST,PAYMENT_PROVIDER:'demo'}));
   try{
-    for(const [i,p]of ['google.com','apple.com','facebook.com'].entries())await saveSocialCustomer(store,identity(p,'user-'+i),'CA','test-'+i);
+    for(const [i,p]of ['google.com','apple.com','password'].entries())await saveSocialCustomer(store,identity(p,'user-'+i),'CA','test-'+i);
     const index=await store.get('platform_accounts',key('google','user-0'));
     await saveSocialCustomer(store,identity('apple.com','user-0'),'US','test-linked');
     assert.equal((await store.get('platform_accounts',key('google','user-0'))).guest_id,index.guest_id);

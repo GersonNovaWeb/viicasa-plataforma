@@ -13,13 +13,13 @@ http.createServer(async (req,res) => {
     const pathname = decodeURIComponent(url.pathname);
     const file = /^(\/|\/(shop|viilife|viiconcierge|propiedades|coleccion|cuenta|checkout|admin|privacidad|pago\/resultado|pago\/cancelado)(\/[^.]+)?)$/.test(pathname) ? 'index.html' : pathname.slice(1);
     const target = resolve(root, file);
-    if (!target.startsWith(root.endsWith(sep) ? root : root+sep) || !['index.html','app.js','styles.css','platform.js','platform.css','currency-ui.js','cleaning-ui.js','cleaning.css','viilife-demo-ui.js'].includes(file) && !file.startsWith('assets/')) {
+    if (!target.startsWith(root.endsWith(sep) ? root : root+sep) || !['index.html','app.js','styles.css','platform.js','platform.css','currency-ui.js','cleaning-ui.js','cleaning.css','viilife-demo-ui.js','email-auth-ui.js','viilife-actions.js','scroll-navigation.js'].includes(file) && !file.startsWith('assets/')) {
       res.writeHead(404).end('Not found');return;
     }
     const body = await readFile(target);
     res.writeHead(200, {'Content-Type':types[extname(target)]||'application/octet-stream','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','X-Frame-Options':'DENY','Referrer-Policy':'strict-origin-when-cross-origin','Cross-Origin-Opener-Policy':'same-origin-allow-popups'});
     res.end(req.method==='HEAD' ? undefined : body);
   } catch {res.writeHead(404).end('Not found');}
-}).listen(Number(process.env.PORT||3015),demo?'127.0.0.1':(process.env.HOST||'0.0.0.0'),()=>console.log('VIICASA: http://127.0.0.1:3015/propiedades'));
+}).listen(Number(process.env.PORT||3015),demo?'127.0.0.1':(process.env.HOST||'0.0.0.0'),()=>console.log(`VIICASA: ${process.env.SITE_URL||'http://127.0.0.1:3015'}/viilife`));
 platformReady().then(()=>console.log('Platform catalog ready; '+(demo?'isolated local demo':'live mode'))).catch(()=>console.error('Backend unavailable; check Firestore configuration.'));
 let working=false;setInterval(async()=>{if(working)return;working=true;try{await maintenance();}catch{/* Retry next cycle. */}finally{working=false;}},30000).unref();

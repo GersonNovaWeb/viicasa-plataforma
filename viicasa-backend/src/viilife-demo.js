@@ -14,8 +14,8 @@ const defaults=()=>({...defaultCleaningSettings(),enabled:true,pricing_confirmed
 export async function demoSettings(store){return {...defaults(),...await store.get('viilife_demo_settings','main')};}
 const selection=s.object({service:s.choice(['routine','deep']),frequency:s.choice(['weekly','biweekly']),hours:s.int(1,8),deep_type:s.choice(['moveout','seasonal']),measure:s.choice(['sqft','rooms']),size:s.int(1,100000),full_clean:s.bool,full_clean_sqft:s.int(1,100000),extras:{...s.array(s.choice(['setup','decoration','removals']),3),uniqueItems:true}},['service','full_clean','extras']);
 const schedule=s.object({days:{...s.array(s.choice(days),7),minItems:1,uniqueItems:true},start_date:s.date,start_hour:s.int(8,18)});
-const quoteBody=s.object({selection,schedule,address:s.address});
-const requestBody=s.object({...quoteBody.properties,customer:s.customer,locale:s.choice(['es','en']),settings_revision:s.int()});
+export const quoteBody=s.object({selection,schedule,address:s.address});
+export const requestBody=s.object({...quoteBody.properties,customer:s.customer,locale:s.choice(['es','en']),settings_revision:s.int()});
 export function demoQuote(input,settings,today=now().slice(0,10)){
   const start=new Date(input.schedule.start_date+'T00:00:00Z');
   if(!Number.isFinite(+start)||start.toISOString().slice(0,10)!==input.schedule.start_date||input.schedule.start_date<today||+start>Date.parse(today)+366*86400000)fail(400,'Elige una fecha válida dentro del próximo año / Choose a date within the next year');

@@ -32,7 +32,7 @@ Stripe. La preparación de países necesita acceso de descarga a su proveedor p�
 `start` utiliza las variables del hosting o un `.env` privado. Copiar los nombres
 de `.env.example` al gestor de variables del hosting y completar los valores.
 
-Para desarrollo local, con Firestore Emulator activo en 127.0.0.1:8088:
+Para desarrollo local, con Firestore Emulator activo en 127.0.0.1:8095:
 
 ```sh
 npm run dev

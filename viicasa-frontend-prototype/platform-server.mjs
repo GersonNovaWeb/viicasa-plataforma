@@ -9,18 +9,20 @@ import {saveCatalog,saveVariant} from '../viicasa-backend/src/firestore-catalog.
 import {safeCheckout} from '../viicasa-backend/src/firestore-commerce.js';
 import {createUser} from '../viicasa-backend/src/firestore-auth.js';
 import {seedDemoPricing} from './demo-pricing.mjs';
+import {localEmulatorHost} from './local-emulator.mjs';
 import {saveSocialCustomer,publicCustomer} from '../viicasa-backend/src/customer-registration.js';
 import {enabledSocialProviders,validateSocialIdentity,isAllowedGoogleAdmin} from '../viicasa-backend/src/social-auth.js';
 const require=createRequire(new URL('../viicasa-backend/package.json',import.meta.url));
 const {initializeApp,applicationDefault,cert}=require('firebase-admin/app');
 const {getAuth}=require('firebase-admin/auth');
 export const demo=process.env.PLATFORM_MODE!=='live';
+const emulatorHost=demo?localEmulatorHost(process.env.FIRESTORE_EMULATOR_HOST):null;
 export const origin=process.env.SITE_URL||'http://127.0.0.1:3015';
 if(new URL(origin).origin!==origin)throw Error('SITE_URL must be an exact origin without a path or trailing slash.');
 if(process.env.NODE_ENV==='production'&&demo)throw Error('Production requires PLATFORM_MODE=live; demo access is local only.');
 if(!demo&&!origin.startsWith('https://'))throw Error('Live platform requires HTTPS.');
 if(demo&&process.env.PAYMENT_PROVIDER==='stripe'&&!process.env.STRIPE_SECRET_KEY?.startsWith('sk_test_'))throw Error('Local demo only accepts Stripe test keys.');
-const config=configFromEnv(demo?{DATABASE_DRIVER:'firestore',FIREBASE_MODE:'emulator',FIREBASE_PROJECT_ID:'demo-viicasa-platform',FIRESTORE_EMULATOR_HOST:'127.0.0.1:8088',PUBLIC_SITE_URL:origin,ALLOWED_ORIGINS:origin,PAYMENT_PROVIDER:process.env.PAYMENT_PROVIDER==='stripe'?'stripe':'demo',STRIPE_SECRET_KEY:process.env.STRIPE_SECRET_KEY,STRIPE_WEBHOOK_SECRET:process.env.STRIPE_WEBHOOK_SECRET,MAIL_MODE:'outbox',ADMIN_EMAIL:'demo@example.invalid'}:{...process.env,DATABASE_DRIVER:'firestore',FIREBASE_MODE:'live',NODE_ENV:'production',PUBLIC_SITE_URL:origin,ALLOWED_ORIGINS:origin,PAYMENT_PROVIDER:process.env.PAYMENT_PROVIDER||'disabled'});
+const config=configFromEnv(demo?{DATABASE_DRIVER:'firestore',FIREBASE_MODE:'emulator',FIREBASE_PROJECT_ID:'demo-viicasa-platform',FIRESTORE_EMULATOR_HOST:emulatorHost,PUBLIC_SITE_URL:origin,ALLOWED_ORIGINS:origin,PAYMENT_PROVIDER:process.env.PAYMENT_PROVIDER==='stripe'?'stripe':'demo',STRIPE_SECRET_KEY:process.env.STRIPE_SECRET_KEY,STRIPE_WEBHOOK_SECRET:process.env.STRIPE_WEBHOOK_SECRET,MAIL_MODE:'outbox',ADMIN_EMAIL:'demo@example.invalid'}:{...process.env,DATABASE_DRIVER:'firestore',FIREBASE_MODE:'live',NODE_ENV:'production',PUBLIC_SITE_URL:origin,ALLOWED_ORIGINS:origin,PAYMENT_PROVIDER:process.env.PAYMENT_PROVIDER||'disabled'});
 let appPromise,authService;
 // Section-level preview: never changes the payment mode of ViiShop or properties.
 config.viilifeMode=process.env.VIILIFE_MODE||'demo';
@@ -35,7 +37,7 @@ export async function platformReady(){
   prepareGeolocation().catch(()=>console.warn('Country lookup unavailable; default currency is USD.'));
   if(demo){
     const content=await readFile(new URL('../viicasa-backend/firestore.rules',import.meta.url),'utf8');
-    const r=await fetch('http://127.0.0.1:8088/emulator/v1/projects/demo-viicasa-platform:securityRules',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({rules:{files:[{name:'security.rules',content}]}})});
+    const r=await fetch(`http://${emulatorHost}/emulator/v1/projects/demo-viicasa-platform:securityRules`,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({rules:{files:[{name:'security.rules',content}]}}),signal:AbortSignal.timeout(5000)});
     if(!r.ok)throw Error('Local security rules could not be applied');
   }
   const app=await api();if(demo){await seed(app.store);await seedDemoPricing(app.store);}return app;
@@ -120,9 +122,10 @@ export async function handlePlatform(req,res,url){
       if(!secret)fail(401,'Acceso administrativo requerido');
     }
     const allowed=/^\/v1\/(properties(?:\/[^/]+)?|products(?:\/[^/]+)?|shop\/settings|cleaning\/(?:settings|quote|requests|preferences)|bookings(?:\/quote)?|cart(?:\/items\/[^/]+)?|orders|checkouts\/[^/]+(?:\/(?:payment|cancel))?|inquiries|admin\/.+|media\/[^/]+|webhooks\/stripe)$/;
+    const viilifeLiveRoute=/^\/v1\/viilife\/(settings|quote|requests)$/;
     const viilifeDemoRoute=/^\/v1\/viilife-demo\/(settings|quote|requests(?:\/[a-f0-9-]+(?:\/pay)?)?)$/;
-    if(!allowed.test(target)&&!viilifeDemoRoute.test(target))fail(404,'Ruta no encontrada');
-    if(mutation&&!writesOpen()&&['/v1/bookings','/v1/orders','/v1/inquiries','/v1/cleaning/requests'].includes(target))fail(503,'El registro de operaciones todavía no está habilitado');
+    if(!allowed.test(target)&&!viilifeDemoRoute.test(target)&&!viilifeLiveRoute.test(target))fail(404,'Ruta no encontrada');
+    if(mutation&&!writesOpen()&&['/v1/bookings','/v1/orders','/v1/inquiries','/v1/cleaning/requests','/v1/viilife/requests'].includes(target))fail(503,'El registro de operaciones todavía no está habilitado');
     const body=mutation?await payload(req):undefined;
     const headers={authorization:`Bearer ${secret||''}`};for(const h of ['content-type','idempotency-key','stripe-signature'])if(req.headers[h])headers[h]=req.headers[h];
     // No browser-provided Authorization or admin role is forwarded.

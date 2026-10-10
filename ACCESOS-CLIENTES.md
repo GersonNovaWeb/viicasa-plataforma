@@ -1,108 +1,70 @@
-# Accesos de clientes: Google, Apple y Facebook
+# Accesos de clientes: Google, Apple y correo con contraseña
 
-## Qué está implementado
+Facebook queda descartado, incluso si una configuración antigua conserva
+`AUTH_FACEBOOK_ENABLED=true`. El administrador sigue entrando exclusivamente con
+Google, correo verificado, allowlist y rol del servidor. No se cambia la landing.
 
-- Botones ES/EN en `/cuenta`. Google conserva su configuración anterior.
-- Apple/Facebook quedan desactivados hasta completar su configuración externa y
-  activar las variables indicadas abajo; no basta con subir el código.
-- Firebase realiza OAuth. El servidor verifica el ID token (incluida revocación),
-  proveedor permitido, email verificado y autenticación reciente antes de crear
-  una cookie HttpOnly. Comprueba también la sesión y el UID en cada acceso.
-- Si el proveedor no acredita el email, la interfaz solicita a Firebase un email
-  de verificación. El cliente debe abrir el enlace y volver a iniciar sesión.
-  Si el proveedor no comparte email, debe autorizarlo o elegir otro método.
-- Las cuentas se identifican por UID Firebase, nunca por coincidencia de email.
-  Se conserva la clave histórica de Google para no perder reservas existentes.
-  Un conflicto de proveedores muestra una indicación para utilizar el original;
-  esta versión no ofrece vinculación manual de proveedores.
-- El administrador sigue requiriendo Google, email verificado, allowlist y rol
-  del servidor. Apple/Facebook no conceden administración por compartir email.
-- No cambia las reglas, índices o colecciones `cs_*` de Coming Soon.
+## Activación
 
-## Firebase común
+1. En Firebase `viicasa` → Authentication → Sign-in method, mantener Google y
+   habilitar **Correo electrónico/contraseña** (no enlace sin contraseña).
+2. Authentication → Settings → Authorized domains: agregar el hostname HTTPS de
+   la plataforma, sin protocolo ni ruta. Conservar los dominios de Coming Soon.
+3. Configurar la política de contraseñas de Firebase (mínimo 12 caracteres para
+   nuevas cuentas) y protección contra enumeración de correos. El mínimo del
+   formulario no sustituye una política aplicada en Firebase.
+4. Revisar las plantillas de **verificación de correo** y **restablecimiento de
+   contraseña** de Firebase. Estos mensajes los envía Firebase, no el SMTP de pedidos.
+5. En Hostinger, activar `AUTH_EMAIL_ENABLED=true` y volver a desplegar.
 
-1. Proyecto `viicasa` → Authentication → Sign-in method / Método de acceso.
-2. Mantener Google habilitado. Configurar Apple y Facebook por separado.
-3. Authentication → Settings → Authorized domains: conservar los dominios actuales
-   y agregar el hostname HTTPS donde se probará la plataforma, sin esquema/ruta.
-4. Revisar la plantilla de verificación de correo de Firebase y el remitente.
-5. Mantener una cuenta por email. No relajar reglas de Firestore para estos accesos.
-
-Los comandos locales `npm run dev` y `npm run dev:stripe` mantienen el emulador de
-Firestore y no habilitan identidades sociales reales. Probar los proveedores en
-el dominio HTTPS de Hostinger con pagos desactivados, no contra el emulador.
+El formulario permite crear cuenta, iniciar sesión y recuperar contraseña. Una
+cuenta nueva recibe un enlace de verificación; debe abrirlo y luego iniciar sesión.
+El backend no admite un email sin verificar ni guarda la contraseña en Firestore.
+Firebase gestiona la contraseña; VIICASA usa una cookie HttpOnly y valida la sesión.
 
 ## Apple
 
-Requiere acceso del cliente a Apple Developer y configuración de Sign in with
-Apple para web: Service ID, Team ID, Key ID y clave privada. Configurar estos
-valores en el proveedor Apple de Firebase, no en el JavaScript del sitio ni Git.
+El cliente debe configurar Sign in with Apple para web en su Apple Developer:
+Service ID, Team ID, Key ID y clave privada `.p8`. Esos datos van en el proveedor
+Apple de Firebase, **nunca en Git ni en el JavaScript del sitio**.
 
-Registrar el dominio y la Return URL que indica Firebase. Con el authDomain actual:
+Registrar los dominios y la Return URL que muestre Firebase. Con el authDomain
+actual, la URL es `https://viicasa.firebaseapp.com/__/auth/handler`.
 
-```text
-https://viicasa.firebaseapp.com/__/auth/handler
-```
+Configurar Apple Private Email Relay para los remitentes de Firebase y del SMTP
+de pedidos. El correo privado de Apple es válido y debe conservarse. Después de
+configurarlo, activar `AUTH_APPLE_ENABLED=true` en Hostinger y volver a desplegar.
+Si todavía falta configuración, mantenerlo en `false`.
 
-Configurar Apple Private Email Relay para los correos de Firebase y cualquier
-remitente de confirmaciones que se utilice después. El email oculto de Apple es
-válido; no hay que sustituirlo ni vincularlo por fuerza a Google/Facebook.
+Guías oficiales:
 
-Guía oficial: https://firebase.google.com/docs/auth/web/apple
+- https://firebase.google.com/docs/auth/web/password-auth
+- https://firebase.google.com/docs/auth/web/apple
 
-## Facebook
+## Identidad y permisos
 
-Crear/configurar una app en Meta for Developers con Facebook Login. Copiar su
-App ID y App Secret al proveedor Facebook de Firebase. Registrar exactamente la
-URI de redirección que muestra Firebase, actualmente la misma URL anterior.
+- Una cuenta se identifica por UID de Firebase; nunca se fusionan dos clientes
+  solo porque sus emails coinciden. Se conserva el historial de cuentas Google.
+- Esta versión no ofrece vinculación manual de proveedores. Ante un conflicto,
+  entrar con el método usado originalmente.
+- Verificar el correo demuestra control del buzón, no identidad legal ni domicilio.
+- No abrir las reglas de Firestore. El servidor comprueba propietario y sesión;
+  las colecciones `cs_*` de Coming Soon no cambian.
 
-Comprobar en Meta los dominios, URLs de privacidad y eliminación de datos, permisos
-de email y requisitos de publicación/revisión vigentes de la app. Mientras esté
-restringida a desarrollo, las pruebas pueden estar limitadas a usuarios con rol
-en esa app. No afirmar que está disponible para todos hasta probar una cuenta
-externa sin rol. Publicar políticas y el mecanismo de eliminación aplicables
-antes de habilitarlo para clientes reales.
+## Prueba real pendiente de completar en el dominio desplegado
 
-Guía oficial: https://firebase.google.com/docs/auth/web/facebook-login
+1. Con un cliente distinto al admin, probar Google y comprobar su historial tras
+   salir y volver a entrar.
+2. Crear una cuenta por correo. Antes de verificar debe rechazar el acceso; tras
+   abrir el enlace debe permitirlo. Probar también recuperación de contraseña.
+3. Con el titular de una cuenta Apple, probar acceso normal y “Ocultar mi correo”;
+   comprobar que recibe los correos de pedidos.
+4. Comprobar en `/admin` → Clientes registrados el proveedor y email verificado.
+5. Con dos clientes A/B, comprobar que B no puede consultar/pagar/cancelar el pedido
+   de A, y que ninguno obtiene acceso de administrador.
 
-## Activación en Hostinger
+`npm run test:social-auth` valida la política local. Con `TEST_FIRESTORE_HOST`
+incluye persistencia en el emulador. No sustituye la prueba OAuth real. Los comandos
+locales `npm run dev` y `npm run dev:stripe` no habilitan identidades reales.
 
-Solo después de configurar y habilitar cada proveedor en Firebase:
-
-```dotenv
-AUTH_APPLE_ENABLED=true
-AUTH_FACEBOOK_ENABLED=true
-```
-
-Se pueden activar independientemente. Si falta configuración, dejarlos en `false`.
-No hacen falta claves Apple/Meta en el repositorio ni claves publicables de Stripe.
-Redeploy/reiniciar para que el servidor lea las variables.
-
-## Cómo verificar clientes y permisos
-
-1. Firebase → Authentication → Users muestra las identidades creadas, UID,
-   proveedores y datos de acceso. Una identidad allí no garantiza que ya haya
-   terminado el registro de VIICASA: un correo pendiente puede detener el proceso.
-2. VIICASA `/admin` → Clientes registrados muestra el proveedor usado más
-   recientemente y el estado del email, además de la región estimada por IP.
-   Las cuentas antiguas actualizan ese estado cuando vuelven a iniciar sesión.
-3. Con cuentas de prueba distintas del administrador, probar Google, Apple y
-   Facebook en perfiles de navegador separados o incógnito. Verificar aparición
-   del cliente, cierre de sesión y recuperación de su historial al volver.
-4. Comprobar que cliente A no pueda abrir un checkout de cliente B, que los clientes
-   no puedan abrir administración y que el administrador autorizado sí pueda.
-5. Probar popup cancelado/bloqueado, email no compartido/no verificado, correo
-   privado Apple, conflicto entre proveedores y cuenta deshabilitada/revocada.
-6. El email verificado demuestra control del correo; no es verificación legal de
-   identidad, nacionalidad ni domicilio. La clasificación Canadá/resto proviene
-   de IP y puede ser desconocida. Esta versión no incluye KYC ni aprobación manual.
-
-Pruebas automatizadas: `npm run test:social-auth`. Comprueban política, aislamiento
-de cuentas y compatibilidad con Google; no sustituyen OAuth real con Apple/Meta.
-
-## Publicación con Git
-
-El usuario realizará commit y push de los cambios revisados. `git pull` descarga
-cambios remotos; `git push` los envía. Antes de publicar, revisar `git diff` y
-`git status`; nunca agregar `.env`, `.env.stripe.local`, claves `.p8` ni JSON privados.
-Los `.env.*` ya se ignoran. Apple/Meta se configuran en Firebase, no en archivos.
+Nunca publicar `.env`, `.env.stripe.local`, JSON privados o claves `.p8`.

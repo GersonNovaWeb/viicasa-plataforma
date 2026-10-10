@@ -9,7 +9,7 @@ import {startPayment} from '../viicasa-backend/src/firestore-payments.js';
 import {hash,token} from '../viicasa-backend/src/lib.js';
 import {afterMinutes} from '../viicasa-backend/src/firestore-store.js';
 const input={selection:{service:'routine',frequency:'weekly',hours:3,full_clean:false,extras:[]},schedule:{days:['mon','tue','wed','thu','fri'],start_date:new Date(Date.now()+86400000).toISOString().slice(0,10),start_hour:8},address:{street:'123 Demo Street',city:'Kelowna',state:'BC',country:'CA',postal_code:'V1Y 1A1'},customer:{name:'Demo Customer',email:'customer@example.invalid',phone:'+12505550123',consent:true},locale:'en',settings_revision:0};
-const baseConfig=configFromEnv({DATABASE_DRIVER:'firestore',FIREBASE_MODE:'emulator',FIREBASE_PROJECT_ID:'demo-viilife-tests-'+randomUUID().slice(0,8),FIRESTORE_EMULATOR_HOST:'127.0.0.1:8088',PAYMENT_PROVIDER:'disabled',MAIL_MODE:'outbox',VIILIFE_MODE:'demo'});
+const baseConfig=configFromEnv({DATABASE_DRIVER:'firestore',FIREBASE_MODE:'emulator',FIREBASE_PROJECT_ID:'demo-viilife-tests-'+randomUUID().slice(0,8),FIRESTORE_EMULATOR_HOST:process.env.TEST_FIRESTORE_HOST||'127.0.0.1:8088',PAYMENT_PROVIDER:'disabled',MAIL_MODE:'outbox',VIILIFE_MODE:'demo'});
 
 test('demo amount, threshold boundaries and real pricing stay separate',async()=>{
   const settings=await demoSettings({get:async()=>null});

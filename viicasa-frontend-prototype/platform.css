@@ -90,7 +90,13 @@ body.platform #feed{padding-top:var(--header-height,110px)}
 .social-login .social-button small{font-size:11px;font-weight:400}
 .social-google{background:white;color:#243d34;border-color:#c9d0c9}.social-google:hover{background:#f3f5f0}
 .social-apple{background:#161616;border-color:#161616}.social-apple:hover{background:#333}
-.social-facebook{background:#0866ff;border-color:#0866ff}.social-facebook:hover{background:#0754cf}
+.social-login [hidden]{display:none!important}
+.social-login details.cleaning-card{margin:18px 0 0;padding:16px;box-shadow:none}
+.social-login #email-login-form label:not(.checkbox){display:block;font-size:14px}
+.social-login #email-login-form input:not([type=checkbox]){width:100%;min-width:0;padding:12px;border:1px solid var(--line);border-radius:4px;font:inherit;margin-top:7px;background:white;color:var(--ink)}
+.social-login #email-login-form .checkbox{font-size:13px;line-height:1.5;flex-wrap:wrap}
+.social-login #email-login-form .action-row{display:grid;gap:10px}
+.social-login #email-status{font-size:14px;line-height:1.6;overflow-wrap:anywhere}
 .social-login .form-message{font-size:14px;line-height:1.6;overflow-wrap:anywhere;margin-bottom:0}
 .social-login .form-message:empty{display:none}
 @media(max-width:700px){.social-login{max-width:none;padding:22px}}

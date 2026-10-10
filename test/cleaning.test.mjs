@@ -84,9 +84,11 @@ test('cleaning HTTP, Firestore, payment and access controls',{skip:!process.env.
    const p=ok(await req('/checkouts/'+r.checkout.id+'/payment',{},other.token));assert.equal(p.amount_minor,59994);
    ok(await req('/admin/payments/'+p.id+'/simulate',{event_id:randomUUID(),outcome:'paid'},admin));
    const mails=await store.list('mail_outbox');assert.ok(mails.some(m=>m.body.includes(r.checkout.id)&&m.body.includes('99.99 CAD/h × 2 h × 3 visits')&&m.body.includes('599.94 CAD')));
-   const c=ok(await req('/admin/cleaning/settings',null,admin));delete c.id;ok(await req('/admin/cleaning/settings',{...c,currency:'USD',hourly_minor:12000},admin,'PUT'));
+   const c=ok(await req('/admin/cleaning/settings',null,admin));delete c.id;
+   ok(await req('/admin/cleaning/settings',{...c,currency:'USD',hourly_minor:12000},admin,'PUT'),400);
+   ok(await req('/admin/cleaning/settings',{...c,currency:'CAD',hourly_minor:12000},admin,'PUT'));
    ok(await req('/cleaning/requests',input,other.token),409);
-   const fresh=ok(await req('/cleaning/quote',{selection:input.selection,address,schedule:input.schedule}));assert.equal(fresh.currency,'USD');assert.equal(fresh.total_minor,72000);
+   const fresh=ok(await req('/cleaning/quote',{selection:input.selection,address,schedule:input.schedule}));assert.equal(fresh.currency,'CAD');assert.equal(fresh.total_minor,72000);
    const paid=ok(await req('/checkouts/'+r.checkout.id,null,other.token));assert.equal(paid.currency,'CAD');assert.equal(paid.total_minor,59994);
  });
  await t.test('production requires a verified social account and never trusts a typed email for login',async()=>{

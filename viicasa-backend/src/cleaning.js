@@ -78,7 +78,7 @@ export async function quoteCleaning(store,input){
   const settings=await getCleaningSettings(store),price=cleaningPrice(input.selection,settings,input.schedule),coverage=cleaningCoverage(input.address,settings);
   return {...price,coverage,revision:settings.revision,can_pay:coverage==='inside'&&settings.enabled&&settings.pricing_confirmed,pricing_confirmed:settings.pricing_confirmed,terms:{es:settings.terms_es,en:settings.terms_en}};
 }
-export async function createCleaningRequest(store,config,guestId,idempotencyKey,input){
+export async function createCleaningRequest(store,config,guestId,idempotencyKey,input,quoteRequest=quoteCleaning){
   if(config.viilifeMode==='demo')fail(409,'ViiLife está en demostración; no admite operaciones reales.');
   if(input.pricing_version!==2)fail(409,'El cálculo cambió. Recarga y revisa el total antes de pagar.');
   if(input.customer.name.trim().length<2||input.customer.phone.trim().length<5)fail(400,'Completa nombre y teléfono.');
@@ -89,13 +89,14 @@ export async function createCleaningRequest(store,config,guestId,idempotencyKey,
     if(guest.email&&guest.email.toLowerCase()!==input.customer.email.toLowerCase())fail(400,'Usa el correo de tu cuenta.');
     const requestHash=hash(JSON.stringify(input)),index=key('cleaning-request',`${guestId}:${idempotencyKey}`),existing=await tx.get('cleaning_idempotency',index);
     if(existing){if(existing.request_hash!==requestHash)fail(409,'La clave de solicitud ya se usó con otros datos.');return {request:customerRequest(must(await tx.get('cleaning_requests',existing.request_id))),checkout:existing.checkout_id?safeCheckout(must(await tx.get('checkouts',existing.checkout_id))):null};}
-    const quote=await quoteCleaning(tx,input),settings=await getCleaningSettings(tx);
+    const quote=await quoteRequest(tx,input),settings=await getCleaningSettings(tx),quick=quoteRequest!==quoteCleaning;
     if(input.settings_revision!==settings.revision)fail(409,'Las tarifas o cobertura cambiaron. Revisa la cotización de nuevo.');
+    if(config.viilifeMode==='live'&&settings.currency!=='CAD')fail(409,'Configura las tarifas de ViiLife en CAD antes de continuar.');
     if(quote.coverage==='inside'&&!quote.can_pay)fail(503,'El servicio todavía no admite pagos.');
     const products=quote.coverage==='outside'?await tx.list('products',{where:[['published','==',true],['archived','==',false]],limit:3}):[];
     const timestamp=now(),rid=id(),checkoutId=quote.can_pay?id():null;
     const detail={...input,quote,terms:input.locale==='en'?settings.terms_en:settings.terms_es,payment_scope:quote.billing.scope,schedule_status:'requested',followup_status:input.selection.extras.length?'estimate_pending':'not_required'};
-    const request={id:rid,guest_id:guestId,...detail,status:checkoutId?'awaiting_payment':quote.coverage==='outside'?'outside_area':'coverage_review',checkout_id:checkoutId,created_at:timestamp};
+    const request={id:rid,guest_id:guestId,...detail,...(quick?{flow:'quick',followup_status:quote.large?'new':detail.followup_status}:{}),status:checkoutId?'awaiting_payment':quote.coverage==='outside'?'outside_area':'coverage_review',checkout_id:checkoutId,created_at:timestamp};
     let checkout=null;
     if(checkoutId){
       checkout={id:checkoutId,guest_id:guestId,request_hash:requestHash,idempotency_key:idempotencyKey,kind:'cleaning',status:'pending',customer_name:input.customer.name,
@@ -105,10 +106,12 @@ export async function createCleaningRequest(store,config,guestId,idempotencyKey,
     }
     tx.create('cleaning_requests',rid,request);tx.create('cleaning_idempotency',index,{request_id:rid,checkout_id:checkoutId,request_hash:requestHash});
     // Consent is explicit and editable from the customer's account; no cs_* writes.
-    tx.put('cleaning_preferences',guestId,{marketing:input.marketing,email:input.customer.email.toLowerCase(),recorded_at:timestamp});
+    if(!quick)tx.put('cleaning_preferences',guestId,{marketing:input.marketing,email:input.customer.email.toLowerCase(),recorded_at:timestamp});
+    // Saving a payable request is not a sale. Receipts and team alerts are
+    // queued only after Stripe confirms payment through its signed webhook.
     if(!checkoutId){
       const english=input.locale==='en',outside=quote.coverage==='outside';
-      await enqueue(tx,`cleaning:${rid}:admin`,config.adminEmail,'ViiLife · '+request.status,JSON.stringify(detail,null,2));
+      if(!quick)await enqueue(tx,`cleaning:${rid}:admin`,config.adminEmail,'ViiLife · '+request.status,JSON.stringify(detail,null,2));
       const body=outside?(english?"We're sorry, this address is outside our service area. Discover ViiShop: ":'Lo sentimos, esta dirección está fuera de nuestra zona de servicio. Descubre ViiShop: '):(english?'We received your request. Coverage needs review; no payment was taken. ':'Recibimos tu solicitud. La cobertura requiere revisión; no se ha cobrado. ');
       const site=config.siteUrl.replace(/\/$/,'');
       const suggestions=products.map(p=>`${p.name}\n${site}/shop/${encodeURIComponent(p.slug)}`).join('\n\n');
@@ -124,15 +127,17 @@ export async function registerCleaning(app,store,config,guard){
   app.get('/v1/cleaning/preferences',{preHandler:guard.guest},async r=>({marketing:(await store.get('cleaning_preferences',r.guest.id))?.marketing===true}));
   app.put('/v1/cleaning/preferences',{preHandler:guard.guest,schema:{body:s.object({marketing:s.bool})}},async r=>store.transaction(async tx=>{const old=await tx.get('cleaning_preferences',r.guest.id);tx.put('cleaning_preferences',r.guest.id,{...old,marketing:r.body.marketing,recorded_at:now()});return {marketing:r.body.marketing};}));
   app.get('/v1/admin/cleaning/settings',{preHandler:guard.admin(['admin'])},()=>getCleaningSettings(store));
-  app.put('/v1/admin/cleaning/settings',{preHandler:guard.admin(['admin']),schema:{body:cleaningSettingsBody}},r=>saveCleaningSettings(store,r.body,r.user.id));
+  app.put('/v1/admin/cleaning/settings',{preHandler:guard.admin(['admin']),schema:{body:cleaningSettingsBody}},r=>{if(config.viilifeMode==='live'&&r.body.currency!=='CAD')fail(400,'La moneda aprobada para ViiLife es CAD.');return saveCleaningSettings(store,r.body,r.user.id);});
   app.get('/v1/admin/cleaning/requests',{preHandler:guard.admin(['admin','support','viewer']),schema:{querystring:s.object({cursor:s.uuid},[])}},async r=>{
     const rows=await store.list('cleaning_requests',{order:[['__name__','asc']],limit:51,...(r.query.cursor?{cursor:[r.query.cursor]}:{})});
     const items=await Promise.all(rows.slice(0,50).map(async row=>{const {guest_id,...safe}=row;const checkout=row.checkout_id?await store.get('checkouts',row.checkout_id):null;const preferences=await store.get('cleaning_preferences',guest_id);return {...safe,current_marketing:preferences?.marketing===true,payment_status:checkout?.status||null};}));
     return {items,next_cursor:rows.length>50?items.at(-1).id:null};
   });
   app.patch('/v1/admin/cleaning/requests/:id',{preHandler:guard.admin(['admin','support']),schema:{params:s.idParams,body:s.object({followup_status:s.choice(['estimate_pending','contacted','visit_scheduled','completed']),notes:s.str(2000,0)})}},async r=>store.transaction(async tx=>{
-    const row=must(await tx.get('cleaning_requests',r.params.id));if(!row.selection.extras.length)fail(400,'Esta solicitud no incluye extras de visita.');
-    const checkout=row.checkout_id&&await tx.get('checkouts',row.checkout_id);if(checkout?.status!=='confirmed')fail(409,'Primero debe confirmarse el pago.');
+    const row=must(await tx.get('cleaning_requests',r.params.id));
+    const checkout=row.checkout_id&&await tx.get('checkouts',row.checkout_id);
+    const payment=row.checkout_id&&await tx.get('payments',row.checkout_id);
+    if(payment?.status!=='paid'||!['confirmed','payment_review'].includes(checkout?.status))fail(409,'Primero debe confirmarse el pago.');
     tx.put('cleaning_requests',row.id,{...row,...r.body});auditDoc(tx,r.user.id,'cleaning.followup',row.id);return {ok:true};
   }));
 }

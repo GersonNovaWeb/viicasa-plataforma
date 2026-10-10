@@ -42,4 +42,15 @@ test('SMTP receives both HTML and text while old text-only messages remain valid
  assert.equal(sent[0].html,m.html);assert.equal(sent[0].text,m.body);assert.equal(sent[1].html,undefined);assert.equal(rows.get('new').status,'sent');
 });
 
+test('unpaid payment notices do not alert the team or promise contact before payment',async()=>{
+ const c={id:sample.reference,kind:'cleaning',customer_name:sample.customer.name,customer_email:sample.customer.email,customer_phone:sample.customer.phone,total_minor:59994,due_minor:59994,currency:'CAD',detail:{...sample}};
+ for(const status of ['pago rechazado','pago vencido','cancelada']){
+  const rows=[];
+  await notice({get:async()=>null,create:(collection,id,row)=>rows.push(row)},c,status,{paymentProvider:'stripe',stripeKey:'sk_test_fixture',adminEmail:'team@example.invalid'});
+  assert.equal(rows.length,1);assert.equal(rows[0].recipient,sample.customer.email);
+  assert.ok(rows[0].body.includes('Please complete payment through Stripe'));
+  assert.ok(!rows[0].body.includes('team will be in touch soon'));
+ }
+});
+
 export {sample};

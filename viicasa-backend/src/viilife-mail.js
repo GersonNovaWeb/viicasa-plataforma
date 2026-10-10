@@ -9,7 +9,7 @@ export function renderViiLifeMail({reference,issuedAt,customer,selection,quote,s
   const paid=event==='paid'||event==='review';
   const status={paid:demo?'Payment simulated':'Payment received',review:demo?'Simulated payment under review':'Payment received — under review',requested:'Request received',unpaid:'Follow-up needed',failed:'Payment unsuccessful',expired:'Payment expired',cancelled:'Order cancelled'}[event]||'Order update';
   const title=paid?(demo?'Demonstration receipt':'Payment receipt'):'Service request summary';
-  const contact='The ViiLife team will be in touch soon to coordinate the details and your preferred schedule.';
+  const contact=paid?'The ViiLife team will be in touch soon to coordinate the details and your preferred schedule.':'Please complete payment through Stripe before our team coordinates your visit. No visit has been confirmed.';
   const intro=event==='unpaid'?'This large request has not completed payment. Please contact the customer to offer assistance; do not assume why they stopped.':event==='review'?'Your payment was received, but the order requires review. Please do not pay again.':paid?'Thank you for choosing ViiLife. Your order details are below.':event==='requested'?'Thank you for your request. Your preferred schedule is subject to confirmation.':'Please review the payment status below. This message does not confirm a visit.';
   const demoNote=demo?'DEMONSTRATION ONLY — No money was charged and no real visit has been booked. This is not a tax receipt.':'';
   const b=quote.billing||{},cycle=b.scope==='one_cycle';

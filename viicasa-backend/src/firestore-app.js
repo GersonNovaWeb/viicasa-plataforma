@@ -16,6 +16,7 @@ import * as s from './firestore-schemas.js';
 import {listRegisteredCustomers} from './customer-registration.js';
 import {registerCleaning} from './cleaning.js';
 import {registerViiLifeDemo,maintainViiLifeDemo} from './viilife-demo.js';
+import {registerViiLifeLive,maintainViiLifeLive} from './viilife-live.js';
 
 export async function buildFirestoreApp(config,options={}){
   const store=options.store||await openFirestore(config);
@@ -44,6 +45,7 @@ export async function buildFirestoreApp(config,options={}){
   app.get('/openapi.json',{preHandler:config.production?guard.admin():undefined,schema:{hide:true}},async()=>app.swagger());
   await registerAuth(app,store,config,guard);await registerCatalog(app,store,config,guard);
   await registerCleaning(app,store,config,guard);
+  await registerViiLifeLive(app,store,config,guard);
   await registerViiLifeDemo(app,store,config,guard);
   const guestSchema=(tag,extra={})=>({tags:[tag],security:[{guestAuth:[]}],...extra});
   app.get('/v1/cart',{preHandler:guard.guest,schema:guestSchema('Carrito',{querystring:s.object({currency:s.currency},[])})},request=>cartItems(store,request.guest.id,request.query.currency));
@@ -97,6 +99,7 @@ export async function buildFirestoreApp(config,options={}){
   app.get('/v1/admin/audit',{preHandler:guard.admin(['admin']),schema:adminSchema('Operación técnica',{querystring:pageSchema})},request=>listPage(store,'audit_log',request.query));
   app.decorate('maintenance',async()=>{
     await maintainViiLifeDemo(store,config);
+    await maintainViiLifeLive(store,config);
     await expireHolds(store);await deliverMail(store,config);
     const expired=await store.list('sessions',{where:[['expires_at','<=',now()]],limit:100});
     await store.transaction(async tx=>{for(const row of expired)tx.remove('sessions',row.id);});

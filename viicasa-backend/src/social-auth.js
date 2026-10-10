@@ -1,9 +1,9 @@
 import {fail} from './lib.js';
 
-export const socialProviderIds={google:'google.com',apple:'apple.com',facebook:'facebook.com'};
+export const socialProviderIds={google:'google.com',apple:'apple.com',email:'password'};
 export function enabledSocialProviders(env,demo){
   const ready=!demo&&Boolean(env.FIREBASE_WEB_API_KEY);
-  return {google:ready,apple:ready&&env.AUTH_APPLE_ENABLED==='true',facebook:ready&&env.AUTH_FACEBOOK_ENABLED==='true'};
+  return {google:ready,apple:ready&&env.AUTH_APPLE_ENABLED==='true',email:ready&&env.AUTH_EMAIL_ENABLED==='true',facebook:false};
 }
 // Claims must already have passed Firebase Admin verifyIdToken/verifySessionCookie.
 export function validateSocialIdentity(user,enabled,{fresh=false,expectedProvider,now=Date.now()/1000}={}){

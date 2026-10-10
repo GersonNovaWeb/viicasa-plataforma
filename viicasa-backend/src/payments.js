@@ -4,13 +4,15 @@ import { id, fail, audit } from './lib.js';
 import { releaseCheckout } from './commerce.js';
 import { checkoutNotice } from './notifications.js';
 
-export function paymentGateway(config) {
+export function paymentGateway(config, options={}) {
   if (config.paymentProvider === 'stripe') {
-    const stripe = new Stripe(config.stripeKey, { maxNetworkRetries: 2, timeout: 15000 });
+    const stripe = options.stripe || new Stripe(config.stripeKey, { maxNetworkRetries: 2, timeout: 15000 });
     return {
       provider: 'stripe',
       async create(payment, checkout) {
         const session = await stripe.checkout.sessions.create({ mode: 'payment', payment_method_types: ['card'],
+          // ViiLife's approved prices are CAD, without IP-based currency conversion.
+          ...(checkout.kind==='cleaning'?{adaptive_pricing:{enabled:false}}:{}),
           client_reference_id: checkout.id, customer_email: checkout.customer_email,
           metadata: { checkout_id: checkout.id, payment_id: payment.id },
           line_items: [{ quantity: 1, price_data: { currency: payment.currency.toLowerCase(), unit_amount: payment.amount_minor,

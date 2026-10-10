@@ -1,7 +1,11 @@
 import {bindPrimaryCurrency,selectedProperty,selectedVariant,rateFields,priceFields,readRates,readPrices} from './currency-ui.js';
+import {emailLoginForm,bindEmailLogin} from './email-auth-ui.js';
 import {cleaningUI} from './cleaning-ui.js';
 import {viilifeDemoUI} from './viilife-demo-ui.js';
-function cleaning(){const real=cleaningUI({api,frame,L,esc,money,settings,lang,checkoutResult});if(settings.viilifeMode!=='demo')return real;const preview=viilifeDemoUI({api,frame,L,esc,money,lang});return {...real,page:preview.page,admin:preview.admin,preferences:preview.account};}
+import {bindViiLifeActions} from './viilife-actions.js';
+import {installPageScroll,scrollFeedTo} from './scroll-navigation.js';
+installPageScroll();
+function cleaning(){const real=cleaningUI({api,frame,L,esc,money,settings,lang,checkoutResult});const live=settings.viilifeMode!=='demo',preview=viilifeDemoUI({api,frame,L,esc,money,lang,live,platformSettings:settings,checkoutResult});return {...real,page:preview.page,...(!live?{admin:preview.admin,preferences:preview.account}:{})};}
 const $=s=>document.querySelector(s);
 // Header height changes with viewport and language; never cover the first content row.
 const headerObserver=new ResizeObserver(entries=>document.documentElement.style.setProperty('--header-height',`${entries[0].target.getBoundingClientRect().height}px`));
@@ -54,7 +58,7 @@ function navigation(){
   document.documentElement.lang=lang;
   $('#navigation').ariaLabel=L('Navegación principal','Main navigation');$('#feed').ariaLabel=L('Contenido principal','Main content');$('.skip').textContent=L('Ir al contenido','Skip to content');
 }
-function frame(content){document.body.classList.add('platform');navigation();$('#feed').innerHTML=banner()+content+`<section class="site-footer"><a class="footer-wordmark" href="/">VIICASA</a><p>${L('El arte de habitar.','The art of being home.')}</p><div><a href="/cuenta">${L('Mi cuenta','My account')}</a><a href="/admin">${L('Administración','Administration')}</a><a href="/privacidad">${L('Privacidad y condiciones','Privacy & terms')}</a></div><small>© ${new Date().getFullYear()} VIICASA</small></section>`;$('#feed').scrollTop=0;}
+function frame(content){document.body.classList.add('platform');document.body.classList.remove('service-form-visible');$('#feed').classList.remove('has-service-form');navigation();$('#feed').innerHTML=banner()+content+`<section class="site-footer"><a class="footer-wordmark" href="/">VIICASA</a><p>${L('El arte de habitar.','The art of being home.')}</p><div><a href="/cuenta">${L('Mi cuenta','My account')}</a><a href="/admin">${L('Administración','Administration')}</a><a href="/privacidad">${L('Privacidad y condiciones','Privacy & terms')}</a></div><small>© ${new Date().getFullYear()} VIICASA</small></section>`;$('#feed').scrollTop=0;}
 function busy(){frame(`<section class="loading"><span class="loader"></span>${L('Preparando tu experiencia…','Preparing your experience…')}</section>`);}
 function failure(error){frame(`<section class="empty"><p class="kicker">VIICASA</p><h1>${L('Un momento, por favor.','One moment, please.')}</h1><p>${esc(error.message)}</p><button class="btn" onclick="location.reload()">${L('Reintentar','Try again')}</button></section>`);}
 function modal(title,content){const d=$('#detail');$('#detail-content').innerHTML=`<h2>${esc(title)}</h2>${content}`;d.setAttribute('aria-label',title);$('#close').ariaLabel=L('Cerrar','Close');$('#close').onclick=()=>d.close();d.showModal();return d;}
@@ -84,22 +88,35 @@ async function start(){
     // Keep the immersive service feed; cleaning checkout has its own route.
     if(['/shop','/viiconcierge','/viilife'].includes(path)){
       const serviceFeed=await import('/app.js');navigation();
-      if(path==='/viilife'&&settings.viilifeMode==='demo'){
+      if(path==='/viilife'){
         const section=document.createElement('section');section.id='viilife-booking';section.className='platform viilife-booking';
+        section.innerHTML=`<div class="page-wrap"><h2>${L('Elige tu servicio ViiLife','Choose your ViiLife service')}</h2><p role="status">${L('Cargando servicios y tarifas…','Loading services and pricing…')}</p></div>`;
         section.setAttribute('aria-label',L('Elige tu servicio ViiLife','Choose your ViiLife service'));$('#feed').append(section);
         serviceFeed.attachServiceForm(section);
+        bindViiLifeActions($('#feed'),{
+          book:()=>{
+            const target=$('#viilife-demo-form')||section;
+            scrollFeedTo($('#feed'),target,{offset:target===section?0:$('.header').getBoundingClientRect().height+24,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});
+            const heading=target.querySelector('legend,h1,h2');
+            if(heading){heading.tabIndex=-1;heading.focus({preventScroll:true});}
+          },
+          enquire:index=>inquiry(null,'ViiLife · '+L(['Limpieza · Información especial','Cuidado de ropa · Información especial','Preparación del hogar · Información especial'][index],['Cleaning · Special enquiry','Laundry care · Special enquiry','Home preparation · Special enquiry'][index]))
+        });
         try{
           await cleaning().page({mount:content=>{section.innerHTML=content;}});
-          section.querySelector('a[href="#viilife-demo-form"]')?.addEventListener('click',event=>{event.preventDefault();$('#viilife-demo-form').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'start'});});
+          section.querySelector('a[href="#viilife-demo-form"]')?.addEventListener('click',event=>{event.preventDefault();scrollFeedTo($('#feed'),$('#viilife-demo-form'),{offset:$('.header').getBoundingClientRect().height+24,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});});
         }catch{
           section.innerHTML=`<div class="page-wrap"><h2>${L('Elige tu servicio ViiLife','Choose your ViiLife service')}</h2><p role="alert">${L('No pudimos cargar el formulario. Intenta abrirlo de nuevo.','We could not load the form. Please try opening it again.')}</p><a class="btn" href="/viilife/limpieza">${L('Abrir formulario','Open form')}</a></div>`;
         }
-        if(location.hash==='#viilife-booking'||location.hash==='#viilife-demo-form')section.scrollIntoView({block:'start'});
+        if(location.hash==='#viilife-booking'||location.hash==='#viilife-demo-form'){
+          const target=location.hash==='#viilife-demo-form'?$('#viilife-demo-form')||section:section;
+          scrollFeedTo($('#feed'),target,{offset:target===section?0:$('.header').getBoundingClientRect().height+24});
+        }
       }
       $('#prototype').textContent=settings.demo?L('Demostración · Sin cobros reales','Demo · No real charges'):'';
       document.querySelectorAll('[data-detail]').forEach(b=>{
         if(path!=='/viilife')b.innerHTML=(path==='/shop'?L('Explorar la colección','Explore the collection'):L('Explorar propiedades','Explore properties'))+' <span aria-hidden="true">↗</span>';
-        b.onclick=()=>path==='/viilife'?(Number(b.dataset.detail)===0?($('#viilife-booking')?$('#viilife-booking').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'start'}):location.href='/viilife/limpieza'):inquiry(null,L(['Limpieza','Lavado de ropa','Preparación del hogar'][Number(b.dataset.detail)],['Cleaning','Laundry','Home preparation'][Number(b.dataset.detail)]))):location.href=path==='/shop'?'/coleccion':'/propiedades';
+        b.onclick=()=>{location.href=path==='/shop'?'/coleccion':'/propiedades';};
       });
       return;
     }
@@ -142,11 +159,11 @@ async function checkoutResult(id){
   if($('#pay'))$('#pay').onclick=async e=>{e.currentTarget.disabled=true;try{const p=await api('/checkouts/'+id+'/payment',{method:'POST'});if(p.checkout_url){const u=new URL(p.checkout_url);if(u.protocol!=='https:'||u.hostname!=='checkout.stripe.com')throw Error('Invalid checkout destination');location.assign(u.href);}else{$('.form-message').textContent=L('Pago demo preparado. Un administrador puede simular su confirmación en el panel. No hay cobro real.','Demo payment prepared. An administrator can simulate confirmation in the dashboard. No real charge.');}}catch(err){$('.form-message').textContent=errorText(err);}finally{if($('#pay'))$('#pay').disabled=false;}};
   if($('#cancel-checkout'))$('#cancel-checkout').onclick=()=>{modal(L('Cancelar esta operación','Cancel this checkout'),`<p>${L('Se liberarán las fechas o existencias retenidas.','Held dates or stock will be released.')}</p><button class="btn" id="confirm-cancel">${L('Sí, cancelar','Yes, cancel')}</button>`);$('#confirm-cancel').onclick=async()=>{try{await api('/checkouts/'+id+'/cancel',{method:'POST'});$('#detail').close();await checkoutResult(id);}catch(e){notify(errorText(e));}};};
 }
-const providerName=id=>({'google.com':'Google','apple.com':'Apple','facebook.com':'Facebook'}[id]||'—');
+const providerName=id=>({'google.com':'Google','apple.com':'Apple','password':L('Correo','Email')}[id]||'—');
 const verificationLabel=value=>value===true?L('Correo verificado','Email verified'):value===false?L('Pendiente de verificación','Verification pending'):L('Por actualizar al iniciar sesión','Updated on next sign-in');
 function loginCard(){
   const enabled=settings.authProviders||{google:settings.googleEnabled};
-  return `<div class="sign-in-card social-login"><h3>${L('Bienvenido a casa.','Welcome home.')}</h3><p>${L('Inicia sesión o crea tu cuenta para consultar tus reservaciones.','Sign in or create an account to view your bookings.')}</p><div class="social-login-buttons">${[['google','Google'],['apple','Apple'],['facebook','Facebook']].map(([id,name])=>`<button type="button" class="btn social-button social-${id}" data-social-login="${id}" ${!enabled[id]?'disabled':''} aria-describedby="social-login-help">${L('Continuar con','Continue with')} ${name}${!enabled[id]?`<small>${L('Por activar','Not enabled yet')}</small>`:''}</button>`).join('')}</div><p class="quiet" id="social-login-help">${settings.demo?L('Vista local: los accesos reales se prueban en el dominio HTTPS configurado.','Local preview: test real sign-in on the configured HTTPS domain.'):L('Necesitas un correo verificado. Apple puede compartir un correo privado de retransmisión.','A verified email is required. Apple may share a private relay email address.')}</p><p class="form-message" id="login-status" role="status" aria-live="polite"></p></div>`;
+  return `<div class="sign-in-card social-login"><h3>${L('Bienvenido a casa.','Welcome home.')}</h3><p>${L('Inicia sesión o crea tu cuenta para consultar tus reservaciones.','Sign in or create an account to view your bookings.')}</p><div class="social-login-buttons">${[['google','Google'],['apple','Apple']].map(([id,name])=>`<button type="button" class="btn social-button social-${id}" data-social-login="${id}" ${!enabled[id]?'disabled':''} aria-describedby="social-login-help">${L('Continuar con','Continue with')} ${name}${!enabled[id]?`<small>${L('Por activar','Not enabled yet')}</small>`:''}</button>`).join('')}</div>${emailLoginForm(L,enabled.email)}<p class="quiet" id="social-login-help">${settings.demo?L('Vista local: los accesos reales se prueban en el dominio HTTPS configurado.','Local preview: test real sign-in on the configured HTTPS domain.'):L('Necesitas un correo verificado. Apple puede compartir un correo privado de retransmisión.','A verified email is required. Apple may share a private relay email address.')}</p><p class="form-message" id="login-status" role="status" aria-live="polite"></p></div>`;
 }
 async function socialSignIn(button,providerId){
   const enabled=settings.authProviders||{google:settings.googleEnabled};
@@ -158,9 +175,8 @@ async function socialSignIn(button,providerId){
     const [{initializeApp,getApps},sdk]=await Promise.all([import('https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js'),import('https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js')]);
     session=sdk.getAuth(getApps()[0]||initializeApp(settings.firebase));signOutSession=sdk.signOut;
     session.languageCode=lang;await sdk.setPersistence(session,sdk.inMemoryPersistence);
-    const provider=providerId==='google'?new sdk.GoogleAuthProvider():providerId==='facebook'?new sdk.FacebookAuthProvider():new sdk.OAuthProvider('apple.com');
+    const provider=providerId==='google'?new sdk.GoogleAuthProvider():new sdk.OAuthProvider('apple.com');
     if(providerId==='apple'){provider.addScope('email');provider.addScope('name');}
-    if(providerId==='facebook')provider.addScope('email');
     const result=await sdk.signInWithPopup(session,provider);
     if(!result.user.email){status.textContent=L('El proveedor no compartió un correo. Autoriza el acceso a tu email o utiliza otro método.','Your provider did not share an email. Allow email access or use another method.');return;}
     if(!result.user.emailVerified){
@@ -191,6 +207,7 @@ async function account(){
   const a=await api('/account');
   frame(`<section class="page-wrap account-page"><div class="section-title"><div><p class="kicker">VIICASA · ${L('MI CUENTA','MY ACCOUNT')}</p><h1>${a.profile?L('Bienvenido,','Welcome,')+'<br><em>'+esc(a.profile.name)+'.</em>':L('Tu espacio personal.','Your personal space.')}</h1></div>${a.profile?`<button class="btn outline" id="logout">${L('Cerrar sesión','Sign out')}</button>`:loginCard()}</div>${a.profile?`<p class="quiet">${L('Zona al registrarte (estimada por IP)','Registration region (estimated by IP)')}: <span class="tag">${regionLabel(a.profile.registration?.region)}</span></p><p class="quiet">${esc(providerName(a.profile.login_provider))} · ${verificationLabel(a.profile.email_verified)}</p>`:''}<h3>${L('Reservaciones y pedidos','Bookings & orders')}</h3>${!a.profile?`<p class="quiet">${L('Estas operaciones pertenecen a la sesión de este navegador. Inicia sesión antes de reservar para asociarlas a tu cuenta.','These checkouts belong to this browser session. Sign in before booking to associate them with your account.')}</p>`:''}<div class="activity-list">${a.items.map(c=>`<a href="/checkout?id=${c.id}"><span>${icon(c.kind==='booking'?'home':'bag')}</span><div><strong>${esc(c.detail.property_name||'ViiShop')}</strong><p>${new Date(c.created_at).toLocaleDateString(lang==='es'?'es-MX':'en-US')} · ${esc(c.id.slice(0,8))}</p></div><span class="status ${c.status}">${statusLabel(c.status)}</span><strong>${money(c.total_minor,c.currency)}</strong><span>↗</span></a>`).join('')||`<div class="empty"><p>${L('Todavía no hay operaciones en esta sesión.','No checkouts in this session yet.')}</p><a class="btn outline" href="/propiedades">${L('Explorar propiedades','Explore properties')}</a></div>`}</div></section>`);
   document.querySelectorAll('[data-social-login]').forEach(b=>b.onclick=()=>socialSignIn(b,b.dataset.socialLogin));
+  bindEmailLogin({api,L,settings,lang});
   if($('#logout'))$('#logout').onclick=async()=>{await api('/auth/logout',{method:'POST'});location.reload();};await cleaning().preferences();
 }
 async function otherRoute(path){if(path==='/viilife/limpieza')return cleaning().page();if(path==='/')return home();if(path==='/coleccion')return catalogue();if(path.startsWith('/shop/'))return product(path.split('/')[2]);if(path==='/checkout')return checkout();if(path==='/cuenta')return account();if(path==='/admin')return admin();if(path.startsWith('/pago/')){const id=new URLSearchParams(location.search).get('checkout');if(id)return checkoutResult(id);}if(path==='/privacidad'){frame(`<section class="page-wrap narrow"><p class="kicker">VIICASA</p><h1>${L('Privacidad y condiciones.','Privacy & terms.')}</h1><p class="error">${L('Borrador pendiente de aprobación. No habilitar operaciones públicas antes de completar esta información.','Draft pending approval. Do not enable public checkouts before completing this information.')}</p><h3>${L('Datos de contacto','Contact details')}</h3><p>${L('Los formularios recaban nombre, email y teléfono para atender solicitudes y gestionar operaciones. Falta confirmar responsable, contacto, conservación y procedimiento de derechos.','Forms collect name, email and phone to handle enquiries and checkouts. The controller, contact, retention and rights process must be confirmed.')}</p><h3>${L('Reservaciones y compras','Bookings & purchases')}</h3><p>${L('Revisa las condiciones específicas de la propiedad y el desglose antes de reservar. La política de cancelación, devoluciones, saldo pendiente y entrega deberá aprobarse antes del lanzamiento.','Review property-specific terms and the price breakdown before booking. Cancellation, refunds, balance collection and delivery policies must be approved before launch.')}</p><p>${L('Las cookies de sesión son necesarias para proteger el acceso y conservar el carrito. La preferencia de idioma se guarda en este dispositivo. Al crear una cuenta, guardamos una estimación del país y la zona (Canadá o resto del mundo) a partir de la IP. No guardamos la IP completa para esa clasificación; puede resultar no detectable.','Session cookies protect access and retain the basket. The language preference is stored on this device. When you create an account, we save an IP-based country and region estimate (Canada or rest of the world). We do not store the full IP for this classification; location may be unavailable.')}</p></section>`);return;}throw Error(L('Página no encontrada.','Page not found.'));}
