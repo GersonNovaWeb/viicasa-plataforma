@@ -33,7 +33,9 @@ test('live Firestore notice queues English HTML for both audiences and deduplica
  const config={paymentProvider:'stripe',stripeKey:'sk_live_fixture',adminEmail:'team@example.invalid'};
  await notice(tx,c,'confirmado',config);await notice(tx,c,'confirmado',config);assert.equal(rows.size,2);
  for(const row of rows.values()){assert.ok(row.html.includes('Payment receipt'));assert.ok(row.body.includes('Payment received: 599.94 CAD'));assert.ok(!row.body.includes('confirmado'));}
- const demoRows=[];await notice({get:async()=>null,create:(c,id,row)=>demoRows.push(row)},c,'confirmado',{...config,stripeKey:'sk_test_fixture'});assert.ok(demoRows.every(r=>r.html.includes('DEMONSTRATION ONLY')));
+ const testRows=[];await notice({get:async()=>null,create:(c,id,row)=>testRows.push(row)},c,'confirmado',{...config,stripeKey:'sk_test_fixture'});
+ assert.ok(testRows.every(r=>r.html.includes('STRIPE TEST PAYMENT')&&!r.html.includes('delivered only to the test mailbox')));
+ assert.deepEqual(testRows.map(r=>r.recipient).sort(),[c.customer_email,config.adminEmail].sort());
 });
 test('SMTP receives both HTML and text while old text-only messages remain valid',async()=>{
  const m=renderViiLifeMail(sample),rows=new Map([['new',{id:'new',recipient:'test@example.invalid',...m,status:'pending',attempts:0,next_attempt:'2000-01-01'}],['old',{id:'old',recipient:'test@example.invalid',subject:'Legacy',body:'Legacy text',status:'pending',attempts:0,next_attempt:'2000-01-01'}]]);

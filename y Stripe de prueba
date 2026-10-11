@@ -1,0 +1,10 @@
+.env.example
+HOSTINGER.md
+test/platform-modes.test.mjs
+test/viilife-approval.test.mjs
+test/viilife-mail.test.mjs
+viicasa-backend/src/config.js
+viicasa-backend/src/firestore-commerce.js
+viicasa-backend/src/viilife-mail.js
+viicasa-frontend-prototype/platform-modes.mjs
+viicasa-frontend-prototype/platform-server.mjs

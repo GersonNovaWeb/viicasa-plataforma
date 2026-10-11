@@ -149,9 +149,10 @@ export async function enqueue(tx,dedupe,recipient,subject,body,html){
 export async function notice(tx,c,status,config){
   if(c.kind==='cleaning'){
     const event={'confirmado':'paid','pago recibido en revisión':'review','pago rechazado':'failed','pago vencido':'expired','cancelada':'cancelled'}[status]||'requested';
-    const demo=config.paymentProvider==='demo'||/^sk_test_/.test(config.stripeKey||'');
+    const demo=config.paymentProvider==='demo';
+    const paymentTest=config.paymentProvider==='stripe'&&/^sk_test_/.test(config.stripeKey||'');
     for(const audience of ['paid','review'].includes(event)?['customer','team']:['customer']){
-      const mail=renderViiLifeMail({reference:c.id,issuedAt:now(),customer:{name:c.customer_name,email:c.customer_email,phone:c.customer_phone},selection:c.detail.selection,quote:c.detail.quote,schedule:c.detail.schedule,address:c.detail.address,event,demo,audience,paidMinor:c.due_minor});
+      const mail=renderViiLifeMail({reference:c.id,issuedAt:now(),customer:{name:c.customer_name,email:c.customer_email,phone:c.customer_phone},selection:c.detail.selection,quote:c.detail.quote,schedule:c.detail.schedule,address:c.detail.address,event,demo,paymentTest,audience,paidMinor:c.due_minor});
       await enqueue(tx,`${c.id}:${status}:${audience==='team'?'admin':'customer'}`,audience==='team'?config.adminEmail:c.customer_email,mail.subject,mail.body,mail.html);
     }
     return;

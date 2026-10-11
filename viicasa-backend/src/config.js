@@ -22,6 +22,7 @@ export function configFromEnv(env = process.env) {
     viilifeMode: env.VIILIFE_MODE || 'live',
     viilifeDemoMail: env.VIILIFE_DEMO_MAIL_MODE || 'outbox',
     paymentProvider: env.PAYMENT_PROVIDER || (production ? 'disabled' : 'demo'),
+    stripeMode: env.STRIPE_MODE || 'test',
     stripeKey: env.STRIPE_SECRET_KEY, stripeWebhookSecret: env.STRIPE_WEBHOOK_SECRET,
     holdMinutes: integer('HOLD_MINUTES', 30, 5, 120), sessionHours: integer('SESSION_HOURS', 8, 1, 24),
     mailMode: env.MAIL_MODE || 'outbox', mailFrom: env.MAIL_FROM || 'VIICASA <no-reply@example.com>',
@@ -41,6 +42,8 @@ export function configFromEnv(env = process.env) {
   if (!['outbox', 'smtp'].includes(config.mailMode)) throw new Error('MAIL_MODE inválido');
   if (config.driver === 'postgres' && !config.databaseUrl) throw new Error('Falta DATABASE_URL');
   if (config.paymentProvider === 'stripe' && (!config.stripeKey || !config.stripeWebhookSecret)) throw new Error('Faltan credenciales de Stripe');
+  if (!['test', 'live'].includes(config.stripeMode)) throw new Error('STRIPE_MODE debe ser test o live');
+  if (config.paymentProvider === 'stripe' && !config.stripeKey.startsWith(config.stripeMode === 'test' ? 'sk_test_' : 'sk_live_')) throw new Error('La clave Stripe no corresponde a STRIPE_MODE. Para pruebas usa STRIPE_MODE=test y una clave sk_test_.');
   if (config.mailMode === 'smtp' && !config.smtp.host) throw new Error('Falta SMTP_HOST');
   for (const value of [config.siteUrl, ...config.origins]) {
     const url = new URL(value);

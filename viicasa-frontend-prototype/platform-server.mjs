@@ -10,12 +10,14 @@ import {safeCheckout} from '../viicasa-backend/src/firestore-commerce.js';
 import {createUser} from '../viicasa-backend/src/firestore-auth.js';
 import {seedDemoPricing} from './demo-pricing.mjs';
 import {localEmulatorHost} from './local-emulator.mjs';
+import {platformModes} from './platform-modes.mjs';
 import {saveSocialCustomer,publicCustomer} from '../viicasa-backend/src/customer-registration.js';
 import {enabledSocialProviders,validateSocialIdentity,isAllowedGoogleAdmin} from '../viicasa-backend/src/social-auth.js';
 const require=createRequire(new URL('../viicasa-backend/package.json',import.meta.url));
 const {initializeApp,applicationDefault,cert}=require('firebase-admin/app');
 const {getAuth}=require('firebase-admin/auth');
-export const demo=process.env.PLATFORM_MODE!=='live';
+const modes=platformModes(process.env);
+export const demo=modes.demo;
 const emulatorHost=demo?localEmulatorHost(process.env.FIRESTORE_EMULATOR_HOST):null;
 export const origin=process.env.SITE_URL||'http://127.0.0.1:3015';
 if(new URL(origin).origin!==origin)throw Error('SITE_URL must be an exact origin without a path or trailing slash.');
@@ -25,7 +27,7 @@ if(demo&&process.env.PAYMENT_PROVIDER==='stripe'&&!process.env.STRIPE_SECRET_KEY
 const config=configFromEnv(demo?{DATABASE_DRIVER:'firestore',FIREBASE_MODE:'emulator',FIREBASE_PROJECT_ID:'demo-viicasa-platform',FIRESTORE_EMULATOR_HOST:emulatorHost,PUBLIC_SITE_URL:origin,ALLOWED_ORIGINS:origin,PAYMENT_PROVIDER:process.env.PAYMENT_PROVIDER==='stripe'?'stripe':'demo',STRIPE_SECRET_KEY:process.env.STRIPE_SECRET_KEY,STRIPE_WEBHOOK_SECRET:process.env.STRIPE_WEBHOOK_SECRET,MAIL_MODE:'outbox',ADMIN_EMAIL:'demo@example.invalid'}:{...process.env,DATABASE_DRIVER:'firestore',FIREBASE_MODE:'live',NODE_ENV:'production',PUBLIC_SITE_URL:origin,ALLOWED_ORIGINS:origin,PAYMENT_PROVIDER:process.env.PAYMENT_PROVIDER||'disabled'});
 let appPromise,authService;
 // Section-level preview: never changes the payment mode of ViiShop or properties.
-config.viilifeMode=process.env.VIILIFE_MODE||'demo';
+config.viilifeMode=modes.viilifeMode;
 config.viilifeDemoMail=process.env.VIILIFE_DEMO_MAIL_MODE||'outbox';
 if(!['demo','live'].includes(config.viilifeMode)||!['outbox','smtp'].includes(config.viilifeDemoMail))throw Error('Invalid ViiLife mode');
 if(demo&&config.viilifeDemoMail==='smtp'){

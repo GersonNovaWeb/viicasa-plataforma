@@ -1,4 +1,47 @@
-# Importar VIICASA en Hostinger — Google y Firestore primero
+# VIICASA en Hostinger
+
+## Configuración actual: plataforma real, pagos Stripe de prueba (11 octubre 2026)
+
+Esta sección sustituye la configuración inicial sin pagos que aparece más abajo.
+Los clientes y pedidos se guardan en Firestore real y SMTP envía a los destinatarios
+del pedido. Solo el procesamiento de la tarjeta continúa en el sandbox de Stripe.
+
+```dotenv
+PLATFORM_MODE=live
+VIILIFE_MODE=live
+PAYMENT_PROVIDER=stripe
+STRIPE_MODE=test
+MAIL_MODE=smtp
+COMMERCE_ENABLED=true
+VIILIFE_DEMO_MAIL_MODE=outbox
+```
+
+Conservar `SITE_URL` HTTPS sin barra final, Firebase, proveedores de acceso,
+SMTP y `PRIVACY_APPROVED=true` si las condiciones ya fueron aprobadas.
+No importar valores vacíos de `.env.example` sobre credenciales existentes.
+El archivo privado `.env.hostinger.viilife.local` es un complemento, no contiene
+necesariamente toda la configuración de la aplicación. No se sube a GitHub.
+
+- `STRIPE_SECRET_KEY`: conservar la clave `sk_test_` del sandbox. Por defecto el
+  servidor rechaza claves `sk_live_`; cobrar dinero real requerirá optar
+  explícitamente por `STRIPE_MODE=live` en una fase posterior.
+- `STRIPE_WEBHOOK_SECRET`: secreto del destino HTTPS en ese mismo sandbox,
+  no el secreto local de `stripe listen`. Ruta: `/v1/webhooks/stripe`.
+- `MAIL_FROM` y `SMTP_USER`: buzón remitente autorizado; `SMTP_PASSWORD`: su contraseña.
+- `ADMIN_EMAIL`: destinatario de avisos administrativos, no reemplaza al comprador.
+- El recibo se envía al `customer_email` guardado en el pedido, tras confirmar
+  el pago por webhook; el aviso al administrador es independiente. Los recibos
+  del sandbox llevan `[STRIPE TEST]` y aclaran que no se cobró dinero real.
+- Índice `mail_outbox`: `status` ascendente, `next_attempt` ascendente, colección.
+
+Guardar variables y volver a desplegar. Comprobar `/api/config`: `demo:false`,
+`viilifeMode:"live"`, `payment:"stripe"`. La publicación rechaza explícitamente
+`VIILIFE_MODE=demo` para evitar desviar correos al buzón fijo de demostración.
+No se migran ni reenvían automáticamente los pedidos/correos de la demo anterior.
+Los scripts locales `npm run dev` y `npm run dev:stripe` permanecen aislados y
+no envían correos reales; el flujo completo con SMTP se valida en Hostinger.
+
+## Referencia histórica: despliegue inicial Google y Firestore, sin pagos
 
 Crear una aplicación nueva para pruebas. No reemplazar la aplicación de Coming Soon
 ni apuntar todavía el dominio principal a esta plataforma.

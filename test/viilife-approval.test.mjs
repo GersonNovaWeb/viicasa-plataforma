@@ -51,6 +51,22 @@ test('approval queues one customer link, Stripe remains owner-only, paid orders 
   const sent=[];const delivered=await deliverMail(store,{...config,mailMode:'smtp'},{sendMail:async m=>{sent.push(m);return {accepted:[m.to]};}});assert.equal(delivered.sent,5);assert.equal(sent.filter(m=>m.to===input.customer.email).length,3);
 });
 
+test('normal Stripe test purchase delivers separate buyer and admin receipts without demo redirection',async()=>{
+  const store=await setup(),row=await create(store,{...input,selection:{...input.selection,hours:2}});
+  const payment=await startPayment(store,config,gateway,'owner',row.checkout.id);
+  const event={provider:'stripe',id:'evt_normal',reference:'cs_test_'+row.checkout.id,outcome:'paid',amount:payment.amount_minor,currency:payment.currency};
+  await settlePayment(store,config,event);await settlePayment(store,config,event);
+  const sent=[];
+  await deliverMail(store,{...config,mailMode:'smtp',mailFrom:'accounts@example.invalid'},{sendMail:async mail=>sent.push(mail)});
+  assert.equal(sent.length,2);
+  assert.deepEqual(sent.map(m=>m.to).sort(),['buyer@example.invalid','team@example.invalid']);
+  for(const mail of sent){
+    assert.match(mail.subject,/\[STRIPE TEST\]/);
+    assert.match(mail.html,/No real money was charged/);
+    assert.doesNotMatch(mail.html,/delivered only to the test mailbox|DEMONSTRATION ONLY/);
+  }
+});
+
 test('cancellation is idempotent and never enables a payment or sends a ready-to-pay email',async()=>{
   const store=await setup(),row=await create(store);
   for(let i=0;i<2;i++)await reviewViiLifeRequest(store,config,row.request.id,'admin',{action:'cancel'});
