@@ -1,5 +1,7 @@
 import {id,hash} from './lib.js';
 import {key,now,afterMinutes} from './firestore-store.js';
+import {enqueue} from './firestore-commerce.js';
+import {renderWelcomeMail} from './platform-mail.js';
 
 // Registration location is an IP estimate, not nationality or verified residence.
 // No raw IP, precise location or browser-provided country is persisted.
@@ -9,7 +11,7 @@ export function registrationRegion(country) {
 }
 
 // Call only after Firebase and the social-auth policy have verified the identity.
-export async function saveSocialCustomer(store,user,country,secret) {
+export async function saveSocialCustomer(store,user,country,secret,config) {
   // Keep the historic namespace: its value is a Firebase UID, not a Google ID.
   // Linked Firebase providers share a UID; never merge accounts by email.
   const accountId=key('google',user.uid);
@@ -26,6 +28,12 @@ export async function saveSocialCustomer(store,user,country,secret) {
     tx.put('guests',gid,record);
     tx.put('platform_accounts',accountId,{...account,guest_id:gid});
     tx.create('guest_tokens',hash(secret),{guest_id:gid,expires_at:afterMinutes(30*24*60)});
+    // Only a newly persisted, verified platform identity gets a welcome.
+    // Existing accounts, linked providers and later logins do not trigger mail.
+    if(!account&&user.email_verified===true&&config){
+      const mail=renderWelcomeMail(record,config.siteUrl);
+      await enqueue(tx,`platform-welcome:${accountId}`,record.email,mail.subject,mail.body,mail.html);
+    }
     return record;
   });
 }

@@ -6,6 +6,7 @@ import {now,key,must,clean,searchTerms,auditDoc,claimUnique} from './firestore-s
 import {blockCalendar,unblockCalendar,calendar,enqueue} from './firestore-commerce.js';
 import * as s from './firestore-schemas.js';
 import {installDemoProperties} from './demo-properties.js';
+import {installDemoProducts} from './demo-products.js';
 
 export const adminSchema=(tag,extra={})=>({tags:[tag],security:[{bearerAuth:[]}],...extra});
 // Cursor pagination avoids Firestore billing for skipped documents. Offset is capped for old clients.
@@ -50,6 +51,9 @@ export async function saveVariant(store,actor,productId,input,variantId){
   });
 }
 export async function registerCatalog(app,store,config,guard){
+  app.post('/v1/admin/demo-products',{preHandler:guard.admin(['admin']),schema:adminSchema('Administración catálogo',{
+    body:s.object({confirm:{const:true}}),
+  })},request=>installDemoProducts(store,request.user.id));
   app.post('/v1/admin/demo-properties',{preHandler:guard.admin(['admin']),schema:adminSchema('Administración catálogo',{
     body:s.object({confirm:{const:true}}),
   })},async request=>{

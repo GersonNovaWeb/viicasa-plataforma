@@ -16,3 +16,5 @@ coverage/
 *.zip
 .DS_Store
 Thumbs.db
+output/pdf/
+tmp/pdfs/

@@ -1,14 +1,17 @@
 import nodemailer from 'nodemailer';
+import {receiptAttachment} from './viilife-receipt.js';
 import {id,fail} from './lib.js';
 import {now,afterMinutes,key,must,auditDoc} from './firestore-store.js';
 import {updateOccupancy,release,notice} from './firestore-commerce.js';
 import {publicPayment} from './payments.js';
+import {requireSamplePaymentMode} from './demo-products.js';
 
 export async function startPayment(store,config,gateway,guestId,checkoutId){
   if(config.paymentProvider==='disabled')fail(503,'La pasarela de pagos aún no está configurada');
   const {payment,checkout}=await store.transaction(async tx=>{
     const c=must(await tx.get('checkouts',checkoutId),'Operación no encontrada');
     if(c.guest_id!==guestId)fail(404,'Operación no encontrada');
+    if(c.kind==='order'&&c.detail.is_demo)requireSamplePaymentMode(config);
     if(c.kind==='cleaning'&&config.viilifeMode==='demo')fail(409,'ViiLife está en demostración; no se permiten cobros reales.');
     if(c.kind==='cleaning'&&c.approval&&c.approval.status!=='approved')fail(409,'El administrador debe aprobar este pedido antes del pago.');
     if(c.status!=='pending'||c.expires_at<=now())fail(409,'La operación ya no admite pagos');
@@ -83,7 +86,7 @@ export async function stripeWebhook(store,config,gateway,raw,signature){
 export async function deliverMail(store,config,transport){
   if(config.mailMode!=='smtp')return{mode:'outbox',sent:0};
   const mailer=transport||nodemailer.createTransport({...config.smtp,connectionTimeout:10000,socketTimeout:30000});
-  let sent=0,failed=0;
+  let sent=0,failed=0,receiptFailed=0;
   try{
     // next_attempt doubles as a lease deadline while processing; no whole-collection scans.
     const candidates=await store.list('mail_outbox',{where:[['status','in',['pending','processing']],['next_attempt','<=',now()]],order:[['next_attempt','asc']],limit:50});
@@ -95,15 +98,19 @@ export async function deliverMail(store,config,transport){
         const updated={...row,status:'processing',attempts:row.attempts+1,next_attempt:afterMinutes(2),lease_token:id()};
         tx.put('mail_outbox',row.id,updated);return updated;
       });if(!message)continue;
-      let success=false;
-      try{await mailer.sendMail({from:config.mailFrom,to:message.recipient,subject:message.subject,text:message.body,...(message.html?{html:message.html}:{}),messageId:`<${message.id}@viicasa.mail>`});success=true;}catch{}
+      let success=false,deliveryError='Receipt PDF generation failed';
+      try{
+        const attachments=message.receipt?[await receiptAttachment(message.receipt)]:undefined;
+        deliveryError='SMTP delivery failed';
+        await mailer.sendMail({from:config.mailFrom,to:message.recipient,subject:message.subject,text:message.body,...(message.html?{html:message.html}:{}),...(attachments?{attachments}:{}),messageId:`<${message.id}@viicasa.mail>`});success=true;
+      }catch{}
       await store.transaction(async tx=>{
         const current=await tx.get('mail_outbox',message.id);if(!current||current.lease_token!==message.lease_token)return;
         tx.put('mail_outbox',message.id,{...current,status:success?'sent':current.attempts>=10?'failed':'pending',
-          sent_at:success?now():null,last_error:success?null:'SMTP delivery failed',lease_token:null,
+          sent_at:success?now():null,last_error:success?null:deliveryError,lease_token:null,
           next_attempt:success?current.next_attempt:afterMinutes(Math.min(60,2**current.attempts))});
-      });if(success)sent++;else failed++;
+      });if(success)sent++;else {failed++;if(deliveryError==='Receipt PDF generation failed')receiptFailed++;}
     }
   }finally{if(!transport&&mailer.close)mailer.close();}
-  return{mode:'smtp',sent,failed};
+  return{mode:'smtp',sent,failed,receiptFailed};
 }

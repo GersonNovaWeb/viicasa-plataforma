@@ -60,6 +60,9 @@ test('normal Stripe test purchase delivers separate buyer and admin receipts wit
   await deliverMail(store,{...config,mailMode:'smtp',mailFrom:'accounts@example.invalid'},{sendMail:async mail=>sent.push(mail)});
   assert.equal(sent.length,2);
   assert.deepEqual(sent.map(m=>m.to).sort(),['buyer@example.invalid','team@example.invalid']);
+  const buyer=sent.find(m=>m.to==='buyer@example.invalid'),team=sent.find(m=>m.to==='team@example.invalid');
+  assert.equal(buyer.attachments.length,1);assert.equal(team.attachments,undefined);
+  assert.equal(buyer.attachments[0].content.subarray(0,5).toString(),'%PDF-');
   for(const mail of sent){
     assert.match(mail.subject,/\[STRIPE TEST\]/);
     assert.match(mail.html,/No real money was charged/);

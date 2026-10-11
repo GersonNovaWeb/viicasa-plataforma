@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "main": "server.js",
-  "engines": {"node": ">=22.13.0"},
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "scripts": {
     "start": "node --env-file-if-exists=.env server.js",
     "dev": "node viicasa-frontend-prototype/dev-local.mjs",
@@ -13,6 +15,10 @@
     "test:viilife-live": "node --test test/viilife-live.test.mjs",
     "test:viilife-approval": "node --test test/viilife-approval.test.mjs test/viilife-admin-ui.test.mjs",
     "test:viilife-mail": "node --test test/viilife-mail.test.mjs",
+    "test:viilife-receipt": "node --test test/viilife-receipt.test.mjs test/viilife-mail.test.mjs test/viilife-approval.test.mjs",
+    "test:platform-mail": "node --test test/platform-mail.test.mjs test/social-auth.test.mjs test/viilife-receipt.test.mjs test/viilife-mail.test.mjs test/viilife-approval.test.mjs",
+    "preview:platform-mail": "node scripts/preview-platform-mail.mjs",
+    "preview:viilife-receipt": "node scripts/preview-viilife-receipt.mjs",
     "test:viilife-actions": "node --test test/viilife-actions.test.mjs",
     "test:scroll": "node --test test/scroll-navigation.test.mjs test/viilife-actions.test.mjs",
     "preview:viilife-mail": "node scripts/preview-viilife-mail.mjs",
@@ -26,6 +32,7 @@
     "test:cleaning": "node --test test/cleaning.test.mjs",
     "test:startup": "node --test test/startup.test.mjs",
     "test:demo-catalog": "node --test viicasa-backend/test/demo-properties.test.js",
+    "test:demo-products": "node --test test/demo-products.test.mjs",
     "preflight:auth": "node --env-file-if-exists=.env viicasa-frontend-prototype/preflight.mjs",
     "preflight:payments": "node --env-file-if-exists=.env viicasa-frontend-prototype/preflight.mjs --payments",
     "test:platform": "node --test viicasa-frontend-prototype/test/platform.test.mjs viicasa-frontend-prototype/test/currency.test.mjs",
@@ -44,8 +51,11 @@
     "firebase-admin": "^14.3.0",
     "ip-location-api": "5.0.2",
     "nodemailer": "^9.1.1",
+    "pdfkit": "^0.20.2",
     "pg": "^8.23.0",
     "stripe": "^22.6.1"
   },
-  "devDependencies": {"firebase-tools": "^15.29.0"}
+  "devDependencies": {
+    "firebase-tools": "^15.29.0"
+  }
 }

@@ -104,7 +104,7 @@ export async function buildFirestoreApp(config,options={}){
     // A missing expiry index must not prevent the independent email queue running.
     try{await expireHolds(store);}catch(error){console.error('VIICASA maintenance: checkout expiry failed',typeof error.code==='number'?error.code:'internal');}
     mailDelivery.last_attempt=now();
-    try{const result=await deliverMail(store,config);mailDelivery.last_error=result.failed?'SMTP_DELIVERY_FAILED':null;}
+    try{const result=await deliverMail(store,config);mailDelivery.last_error=result.receiptFailed?'PDF_RECEIPT_FAILED':result.failed?'SMTP_DELIVERY_FAILED':null;}
     catch(error){mailDelivery.last_error=error.code===9?'FIRESTORE_PRECONDITION':'MAIL_QUEUE_FAILED';console.error('VIICASA mail queue:',mailDelivery.last_error);}
     const expired=await store.list('sessions',{where:[['expires_at','<=',now()]],limit:100});
     await store.transaction(async tx=>{for(const row of expired)tx.remove('sessions',row.id);});

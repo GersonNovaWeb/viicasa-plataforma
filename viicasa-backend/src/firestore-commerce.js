@@ -2,6 +2,9 @@ import {id,hash,fail,dateRange,money} from './lib.js';
 import {now,afterMinutes,key,must,auditDoc} from './firestore-store.js';
 import {propertyRate,variantRate} from './pricing.js';
 import {renderViiLifeMail} from './viilife-mail.js';
+import {receiptSnapshot} from './viilife-receipt.js';
+import {purchaseEvent,renderPurchaseMail,commerceReceiptSnapshot} from './platform-mail.js';
+import {requireSamplePaymentMode} from './demo-products.js';
 
 export const safeCheckout=row=>{
   const {guest_id,request_hash,idempotency_key,...safe}=row;
@@ -95,10 +98,11 @@ export async function createOrder(store,config,guestId,idempotencyKey,input){
   return store.transaction(async tx=>{
     const saved=await prior(tx,guestId,idempotencyKey,input,'order');if(saved.row)return safeCheckout(saved.row);
     const cart=await tx.get('carts',guestId);if(!cart?.items.length)fail(400,'El carrito está vacío');
-    const items=[];let total=0,currency=null;
+    const items=[];let total=0,currency=null,isDemo=false;
     for(const line of cart.items){
       const v=must(await tx.get('variants',line.variant_id),'Variante no encontrada'),p=must(await tx.get('products',v.product_id));
       if(!v.active||!p.published||p.archived)fail(409,'Un producto del carrito ya no está disponible');
+      if(p.is_demo){requireSamplePaymentMode(config);isDemo=true;}
       if(v.stock<line.quantity)fail(409,`Inventario insuficiente: ${v.sku}`);
       const rate=variantRate(v,input.currency);
       if(currency && currency!==rate.currency)fail(400,'No se pueden mezclar monedas en un pedido');
@@ -110,7 +114,7 @@ export async function createOrder(store,config,guestId,idempotencyKey,input){
     if(input.delivery==='pickup'&&!settings.pickup_enabled)fail(400,'La recolección no está habilitada');
     const shipping=input.delivery==='shipping'?settings.shipping_minor:0,subtotal=total;total=money(total+shipping);
     const detail={delivery:input.delivery,subtotal_minor:subtotal,shipping_minor:shipping,shipping_address:input.delivery==='shipping'?input.shipping_address:null,
-      pickup_instructions:input.delivery==='pickup'?settings.pickup_instructions:null,terms:settings.terms,note:input.note||'',items};
+      pickup_instructions:input.delivery==='pickup'?settings.pickup_instructions:null,terms:settings.terms,note:input.note||'',items,is_demo:isDemo};
     const c=checkoutRecord(config,guestId,idempotencyKey,saved.requestHash,'order',input.customer,total,total,currency,detail);
     for(const line of items){const v=await tx.get('variants',line.variant_id);tx.put('variants',v.id,{...v,stock:v.stock-line.quantity});movement(tx,v,-line.quantity,'checkout_hold',c.id);}
     saveCheckout(tx,c,saved.index);tx.put('carts',guestId,{id:guestId,items:[]});return safeCheckout(c);
@@ -142,9 +146,9 @@ export async function expireHolds(store){
     await release(tx,c,'expired');return 1;
   });return{expired};
 }
-export async function enqueue(tx,dedupe,recipient,subject,body,html){
+export async function enqueue(tx,dedupe,recipient,subject,body,html,receipt){
   const mailId=key('mail',dedupe);if(await tx.get('mail_outbox',mailId))return;
-  tx.create('mail_outbox',mailId,{recipient,subject,body,...(html?{html}:{}),status:'pending',attempts:0,next_attempt:now(),created_at:now(),lease_token:null});
+  tx.create('mail_outbox',mailId,{recipient,subject,body,...(html?{html}:{}),...(receipt?{receipt}:{}),status:'pending',attempts:0,next_attempt:now(),created_at:now(),lease_token:null});
 }
 export async function notice(tx,c,status,config){
   if(c.kind==='cleaning'){
@@ -152,15 +156,19 @@ export async function notice(tx,c,status,config){
     const demo=config.paymentProvider==='demo';
     const paymentTest=config.paymentProvider==='stripe'&&/^sk_test_/.test(config.stripeKey||'');
     for(const audience of ['paid','review'].includes(event)?['customer','team']:['customer']){
-      const mail=renderViiLifeMail({reference:c.id,issuedAt:now(),customer:{name:c.customer_name,email:c.customer_email,phone:c.customer_phone},selection:c.detail.selection,quote:c.detail.quote,schedule:c.detail.schedule,address:c.detail.address,event,demo,paymentTest,audience,paidMinor:c.due_minor});
-      await enqueue(tx,`${c.id}:${status}:${audience==='team'?'admin':'customer'}`,audience==='team'?config.adminEmail:c.customer_email,mail.subject,mail.body,mail.html);
+      const input={reference:c.id,issuedAt:now(),customer:{name:c.customer_name,email:c.customer_email,phone:c.customer_phone},selection:c.detail.selection,quote:c.detail.quote,schedule:c.detail.schedule,address:c.detail.address,event,demo,paymentTest,audience,paidMinor:c.due_minor};
+      const receipt=audience==='customer'&&!demo&&['paid','review'].includes(event)?receiptSnapshot(input):null;
+      const mail=renderViiLifeMail(input);
+      await enqueue(tx,`${c.id}:${status}:${audience==='team'?'admin':'customer'}`,audience==='team'?config.adminEmail:c.customer_email,mail.subject,mail.body,mail.html,receipt);
     }
     return;
   }
-  const label=c.kind==='booking'?'Reservación':'Pedido',subject=`VIICASA · ${label} ${status}`;
-  const body=`${label}: ${c.id}\nEstado: ${status}\nCliente: ${c.customer_name}\nTotal: ${(c.total_minor/100).toFixed(2)} ${c.currency}\nImporte del pago: ${(c.due_minor/100).toFixed(2)} ${c.currency}\nDetalle: ${JSON.stringify(c.detail,null,2)}`;
-  await enqueue(tx,`${c.id}:${status}:customer`,c.customer_email,subject,body);
-  await enqueue(tx,`${c.id}:${status}:admin`,config.adminEmail,subject,body);
+  const event=purchaseEvent(status);
+  for(const audience of ['customer','team']){
+    const mail=renderPurchaseMail(c,event,config,audience);
+    const receipt=audience==='customer'&&config.paymentProvider!=='demo'&&['paid','review'].includes(event)?commerceReceiptSnapshot(c,event,config):null;
+    await enqueue(tx,`${c.id}:${status}:${audience==='team'?'admin':'customer'}`,audience==='team'?config.adminEmail:c.customer_email,mail.subject,mail.body,mail.html,receipt);
+  }
 }
 export async function cancelCheckout(store,config,checkoutId,guestId,actor=null){
   return store.transaction(async tx=>{

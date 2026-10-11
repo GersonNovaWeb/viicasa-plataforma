@@ -92,7 +92,7 @@ export async function handlePlatform(req,res,url){
       const secret=token();
       const location=locationPreference(req,(process.env.TRUSTED_PROXY_IPS||'').split(',').map(s=>s.trim()).filter(Boolean));
       const identityCookie=await auth().createSessionCookie(input.idToken,{expiresIn:28800000});
-      await saveSocialCustomer(store,user,location.country,secret);
+      await saveSocialCustomer(store,user,location.country,secret,config);
       secretCookie(res,'vc_guest',secret,2592000);secretCookie(res,'vc_identity',identityCookie);
       json(res,200,{ok:true});return true;
     }

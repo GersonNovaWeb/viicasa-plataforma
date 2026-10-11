@@ -7,6 +7,7 @@ const prices=base.object({USD:base.int(1),CAD:base.int(1)},[]);
 const extend=(schema,properties)=>({...schema,properties:{...schema.properties,...properties}});
 const propertyImages={...base.images,items:{anyOf:[base.images.items,{enum:['/assets/interior.png','/assets/bedroom.png','/assets/exterior.png','/assets/life.png']}]}};
 export const propertyBody=extend(base.propertyBody,{currency,rates,images:propertyImages});
+export const productBody=extend(base.productBody,{images:{...base.images,items:{anyOf:[base.images.items,{enum:['/assets/objects.png','/assets/shop.png']}]}}});
 export const variantBody=extend(base.variantBody,{currency,prices});
 export const bookingBody=extend(base.bookingBody,{currency});
 export const quoteBody=extend(base.quoteBody,{currency});
