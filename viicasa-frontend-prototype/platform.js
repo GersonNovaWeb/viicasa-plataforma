@@ -88,6 +88,13 @@ async function start(){
     // Keep the immersive service feed; cleaning checkout has its own route.
     if(['/shop','/viiconcierge','/viilife'].includes(path)){
       const serviceFeed=await import('/app.js');navigation();
+      if(path==='/shop'){
+        const section=document.createElement('section');section.id='viishop-products';section.className='platform viishop-products';
+        section.setAttribute('aria-label',L('Colección ViiShop','ViiShop collection'));$('#feed').append(section);
+        serviceFeed.attachServiceForm(section);
+        void catalogue(section); // Keep scene navigation responsive while the API loads.
+        if(location.hash==='#viishop-products')scrollFeedTo($('#feed'),section);
+      }
       if(path==='/viilife'){
         const section=document.createElement('section');section.id='viilife-booking';section.className='platform viilife-booking';
         section.innerHTML=`<div class="page-wrap"><h2>${L('Elige tu servicio ViiLife','Choose your ViiLife service')}</h2><p role="status">${L('Cargando servicios y tarifas…','Loading services and pricing…')}</p></div>`;
@@ -116,7 +123,10 @@ async function start(){
       $('#prototype').textContent=settings.demo?L('Demostración · Sin cobros reales','Demo · No real charges'):'';
       document.querySelectorAll('[data-detail]').forEach(b=>{
         if(path!=='/viilife')b.innerHTML=(path==='/shop'?L('Explorar la colección','Explore the collection'):L('Explorar propiedades','Explore properties'))+' <span aria-hidden="true">↗</span>';
-        b.onclick=()=>{location.href=path==='/shop'?'/coleccion':'/propiedades';};
+        b.onclick=()=>{if(path==='/shop'){
+          const section=$('#viishop-products');scrollFeedTo($('#feed'),section,{behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});
+          const heading=section.querySelector('h2');if(heading){heading.tabIndex=-1;heading.focus({preventScroll:true});}
+        }else location.href='/propiedades';};
       });
       return;
     }
@@ -127,11 +137,23 @@ async function home(){
   const houses=(await api('/properties?limit=4')).items.map(p=>selectedProperty(p,preferredCurrency));
   frame(`<section class="home-hero"><img src="/assets/interior.png" alt="${L('Interior de referencia VIICASA','VIICASA reference interior')}"><div><p class="kicker">THE ART OF BEING HOME</p><h1>${L('No es solo un lugar.','More than a place.')}<br><em>${L('Es cómo te hace sentir.','A feeling of home.')}</em></h1><p>${L('Estancias que inspiran. Objetos con intención. Cuidado para tu hogar.','Inspiring stays. Objects with intention. Care for your home.')}</p><a class="btn light" href="/propiedades">${L('Encontrar mi estancia','Find my stay')} ↗</a></div></section><section class="home-content"><div class="section-title"><div><p class="kicker">VIICONCIERGE</p><h2>${L('Espacios con carácter.','Spaces with character.')}</h2></div><a href="/propiedades">${L('Ver propiedades','View properties')} ↗</a></div><div class="property-grid">${houses.slice(0,2).map(propertyCard).join('')}</div><div class="home-services"><a href="/shop"><img src="/assets/objects.png" alt="ViiShop"><div><p class="kicker">VIISHOP</p><h2>${L('Vivir entre<br>cosas que importan.','Live among<br>meaningful things.')}</h2><span>${L('Descubrir la colección','Discover the collection')} ↗</span></div></a><a href="/viilife"><img src="/assets/life.png" alt="ViiLife"><div><p class="kicker">VIILIFE</p><h2>${L('Más tiempo<br>para ti.','More time<br>for you.')}</h2><span>${L('Conocer los servicios','Explore services')} ↗</span></div></a></div></section>`);
 }
-async function catalogue(){
+async function catalogue(mount){
+  if(mount){
+    const heading=`<div class="section-title"><div><p class="kicker">VIISHOP · THE EDIT</p><h2>${L('El valor de los detalles.','The beauty of the details.')}</h2></div><a class="btn outline" href="/checkout">${icon('bag')}${L('Ver carrito','View basket')}</a></div>`;
+    mount.innerHTML=`<div class="page-wrap">${heading}<p role="status">${L('Cargando la colección…','Loading the collection…')}</p></div>`;
+    try{
+      currentProducts=await allPages('/products');
+      mount.innerHTML=`<div class="page-wrap">${heading}<div class="product-grid">${currentProducts.map(p=>`<article><a class="product-photo" href="/shop/${esc(p.slug)}">${photo(p)}</a><p class="kicker">${esc(bilingual(p.category))}</p><h3><a href="/shop/${esc(p.slug)}">${esc(bilingual(p.name))}</a></h3><a class="back-link" href="/shop/${esc(p.slug)}">${L('Ver detalles y precio','View details & price')} ↗</a></article>`).join('')||`<p>${L('El catálogo estará disponible pronto.','The collection will be available soon.')}</p>`}</div></div>`;
+    }catch{
+      mount.innerHTML=`<div class="page-wrap">${heading}<p role="alert">${L('No pudimos cargar los productos. Inténtalo de nuevo en un momento.','We could not load the products. Please try again in a moment.')}</p><button class="btn outline" data-retry-products>${L('Reintentar','Try again')}</button></div>`;
+      mount.querySelector('[data-retry-products]').onclick=()=>catalogue(mount);
+    }
+    return;
+  }
   currentProducts=await allPages('/products');frame(`<section class="page-wrap"><div class="section-title"><div><p class="kicker">VIISHOP · THE EDIT</p><h1>${L('El valor de','The beauty of')}<br><em>${L('los detalles.','the details.')}</em></h1></div><a class="btn outline" href="/checkout">${icon('bag')}${L('Ver carrito','View basket')}</a></div><div class="product-grid">${currentProducts.map(p=>`<article><a class="product-photo" href="/shop/${esc(p.slug)}">${photo(p)}</a><p class="kicker">${esc(bilingual(p.category))}</p><h3>${esc(bilingual(p.name))}</h3><a class="back-link" href="/shop/${esc(p.slug)}">${L('Ver detalles y precio','View details & price')} ↗</a></article>`).join('')||`<p>${L('El catálogo estará disponible pronto.','The collection will be available soon.')}</p>`}</div></section>`);
 }
 async function product(slug){
-  const p=await api('/products/'+encodeURIComponent(slug));p.variants=p.variants.map(v=>selectedVariant(v,preferredCurrency));frame(`<section class="page-wrap"><a class="back-link" href="/coleccion">← ViiShop</a><div class="product-detail"><div>${gallery(p)}</div><div><p class="kicker">${esc(bilingual(p.category))}</p><h1>${esc(bilingual(p.name))}</h1><p>${esc(translated(p.description))}</p><form id="add-cart"><label>${L('Presentación','Variant')}<select name="variant">${p.variants.map(v=>`<option value="${v.id}" ${!v.stock||!v.price_available?'disabled':''}>${esc(bilingual(v.name))} · ${money(v.price_minor,v.currency)} · ${v.stock} ${L('disponibles','available')}</option>`).join('')}</select></label><label>${L('Cantidad','Quantity')}<input type="number" name="quantity" min="1" max="99" value="1" required></label><button class="btn" ${!p.variants.some(v=>v.stock>0&&v.price_available)?'disabled':''}>${icon('bag')}${L('Agregar al carrito','Add to basket')}</button><div class="form-message" role="status"></div></form><a class="back-link" href="/checkout">${L('Ir al carrito','Go to basket')} ↗</a></div></div></section>`);wireGallery(p);$('#add-cart').onsubmit=async e=>{e.preventDefault();const f=e.currentTarget,b=f.querySelector('button');b.disabled=true;try{const d=new FormData(f);await api('/cart/items/'+d.get('variant'),{method:'PUT',body:{quantity:Number(d.get('quantity'))}});f.querySelector('.form-message').textContent=L('Carrito actualizado.','Basket updated.');}catch(err){f.querySelector('.form-message').textContent=errorText(err);}finally{b.disabled=false;}};
+const p=await api('/products/'+encodeURIComponent(slug));p.variants=p.variants.map(v=>selectedVariant(v,preferredCurrency));frame(`<section class="page-wrap"><a class="back-link" href="/shop#viishop-products">← ViiShop</a><div class="product-detail"><div>${gallery(p)}</div><div><p class="kicker">${esc(bilingual(p.category))}</p><h1>${esc(bilingual(p.name))}</h1><p>${esc(translated(p.description))}</p><form id="add-cart"><label>${L('Presentación','Variant')}<select name="variant">${p.variants.map(v=>`<option value="${v.id}" ${!v.stock||!v.price_available?'disabled':''}>${esc(bilingual(v.name))} · ${money(v.price_minor,v.currency)} · ${v.stock} ${L('disponibles','available')}</option>`).join('')}</select></label><label>${L('Cantidad','Quantity')}<input type="number" name="quantity" min="1" max="99" value="1" required></label><button class="btn" ${!p.variants.some(v=>v.stock>0&&v.price_available)?'disabled':''}>${icon('bag')}${L('Agregar al carrito','Add to basket')}</button><div class="form-message" role="status"></div></form><a class="back-link" href="/checkout">${L('Ir al carrito','Go to basket')} ↗</a></div></div></section>`);wireGallery(p);$('#add-cart').onsubmit=async e=>{e.preventDefault();const f=e.currentTarget,b=f.querySelector('button');b.disabled=true;try{const d=new FormData(f);await api('/cart/items/'+d.get('variant'),{method:'PUT',body:{quantity:Number(d.get('quantity'))}});f.querySelector('.form-message').textContent=L('Carrito actualizado.','Basket updated.');}catch(err){f.querySelector('.form-message').textContent=errorText(err);}finally{b.disabled=false;}};
 }
 const customerFields=()=>`<label>${L('Nombre completo','Full name')}<input name="name" autocomplete="name" minlength="2" maxlength="120" required></label><div class="form-pair"><label>Email<input type="email" name="email" autocomplete="email" maxlength="254" required></label><label>${L('Teléfono','Phone')}<input type="tel" name="phone" autocomplete="tel" minlength="5" maxlength="30" required></label></div>`;
 const consentField=()=>`<label class="consent"><input type="checkbox" name="consent" required><span>${L('He leído y acepto las condiciones y el aviso de privacidad.','I have read and accept the terms and privacy notice.')} <a href="/privacidad" target="_blank" rel="noopener">${L('Leer','Read')}</a>${settings.demo?' '+L('(Condiciones de demostración.)','(Demo terms.)'):''}</span></label>`;
@@ -143,7 +165,7 @@ async function checkout(){
   const params=new URLSearchParams(location.search);if(params.get('id'))return checkoutResult(params.get('id'));
   const booking=params.get('kind')==='booking';let quote,items=[],bookingInput;
   if(booking){bookingInput={property_id:params.get('property_id'),check_in:params.get('check_in'),check_out:params.get('check_out'),guests:Number(params.get('guests')),currency:preferredCurrency};quote=await api('/bookings/quote',{method:'POST',body:bookingInput});}else items=(await api('/cart?currency='+preferredCurrency)).items;
-  if(!booking&&!items.length){frame(`<section class="empty"><p class="kicker">VIISHOP</p><h1>${L('Tu carrito está vacío.','Your basket is empty.')}</h1><a class="btn" href="/coleccion">${L('Explorar la colección','Explore the collection')}</a></section>`);return;}
+  if(!booking&&!items.length){frame(`<section class="empty"><p class="kicker">VIISHOP</p><h1>${L('Tu carrito está vacío.','Your basket is empty.')}</h1><a class="btn" href="/shop#viishop-products">${L('Explorar la colección','Explore the collection')}</a></section>`);return;}
   if(!booking&&items.some(v=>!v.price_available)){frame(`<section class="empty"><h1>${L('Falta una tarifa en','Missing a price in')} ${preferredCurrency}</h1><p>${L('Uno de los artículos de tu carrito no tiene precio en esta moneda. Cambia la moneda o retira los artículos sin tarifa.','An item in your basket has no price in this currency. Change currency or remove the unpriced items.')}</p>${items.filter(v=>!v.price_available).map(v=>`<p>${esc(bilingual(v.product_name))} <button class="btn outline" data-unpriced="${v.variant_id}">${L('Quitar','Remove')}</button></p>`).join('')}</section>`);document.querySelectorAll('[data-unpriced]').forEach(b=>b.onclick=async()=>{try{await api('/cart/items/'+b.dataset.unpriced,{method:'DELETE'});await checkout();}catch(e){notify(errorText(e));}});return;}
   const shopSettings=booking?null:(await api('/shop/settings')).items.find(s=>s.currency===items[0].currency);
   const currency=quote?.currency||items[0].currency,total=quote?.total_minor||items.reduce((s,v)=>s+v.price_minor*v.quantity,0);

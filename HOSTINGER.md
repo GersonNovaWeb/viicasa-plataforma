@@ -197,6 +197,16 @@ Después de cargar el catálogo, los datos quedan en Firestore sin otro desplieg
 
 ### Productos de ejemplo de ViiShop
 
+En `/shop`, la colección aparece debajo de los tres paneles de scroll. El botón
+«Explorar la colección» baja a esa sección, sin abrir otra página. Los enlaces
+de regreso desde una ficha o carrito apuntan a `/shop#viishop-products`.
+Si el catálogo falla, muestra un reintento dentro de la sección sin borrar los
+paneles. Mientras falta/se construye el índice compuesto de `products`, la API
+usa una consulta alternativa paginada y limitada que sigue excluyendo borradores
+y archivados. Conviene mantener desplegados los índices de
+`viicasa-backend/firestore.indexes.json`; esta alternativa no sustituye permisos
+ni credenciales correctos de Firebase.
+
 Después de desplegar, entra como administrador a **Productos → Cargar 4 productos
 de prueba**. Las definiciones están en `viicasa-backend/src/demo-products.js`:
 Terra Ceramic Vase, Natural Linen Throw, Sculptural Wood Object y Home Ritual Set.

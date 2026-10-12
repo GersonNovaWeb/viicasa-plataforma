@@ -24,6 +24,28 @@ export async function listPage(store,collection,input={},where=[]){
   return{items:items.map(clean),limit,offset,next_cursor:rows.length>limit?Buffer.from(JSON.stringify([last.created_at,last.id])).toString('base64url'):null};
 }
 function validateProperty(data){try{new Intl.DateTimeFormat('en',{timeZone:data.timezone});}catch{fail(400,'Zona horaria inválida');}}
+// During index creation, keep the public shop available using a bounded scan of
+// the built-in date index. Never expose drafts/archives or scan without a limit.
+export async function publicProductsPage(store,input={},where=[]){
+  try{return await listPage(store,'products',input,where);}catch(error){
+    if(![9,'FAILED_PRECONDITION'].includes(error.code)||!/index/i.test(error.message||''))throw error;
+  }
+  const limit=input.limit??20,items=[];let cursor=cursorDecode(input.cursor),offset=input.offset??0,last,more=false;
+  for(let batch=0;batch<5;batch++){
+    const rows=await store.list('products',{order:[['created_at','desc'],['__name__','desc']],cursor,offset,limit:100});offset=0;
+    more=rows.length===100;
+    for(const row of rows){
+      if(row.published===true&&row.archived===false&&where.every(([f,op,v])=>op==='=='?row[f]===v:op==='array-contains'&&Array.isArray(row[f])&&row[f].includes(v))){
+        if(items.length===limit)return{items:items.map(clean),limit,offset:input.offset??0,next_cursor:Buffer.from(JSON.stringify([last.created_at,last.id])).toString('base64url')};
+        items.push(row);
+      }
+      last=row;
+    }
+    if(!more)break;
+    cursor=[last.created_at,last.id];
+  }
+  return{items:items.map(clean),limit,offset:input.offset??0,next_cursor:more&&last?Buffer.from(JSON.stringify([last.created_at,last.id])).toString('base64url'):null};
+}
 export async function saveCatalog(store,actor,collection,input,recordId){
   if(collection==='properties')validateProperty(input);
   return store.transaction(async tx=>{
@@ -71,7 +93,7 @@ export async function registerCatalog(app,store,config,guard){
       const where=[['published','==',true],['archived','==',false]],q=request.query.q;
       if(q){const words=q.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
         if(!/^[a-z0-9]+$/.test(words))fail(400,'La búsqueda inicial admite una palabra o prefijo');where.push(['search_terms','array-contains',words]);}
-      return listPage(store,collection,request.query,where);
+      return collection==='products'?publicProductsPage(store,request.query,where):listPage(store,collection,request.query,where);
     });
     app.get(`/v1/${collection}/:slug`,{schema:{tags:['Catálogo público'],params:s.object({slug:s.slug})}},async request=>{
       const index=await store.get('unique_keys',key(`${collection}-slug`,request.params.slug));

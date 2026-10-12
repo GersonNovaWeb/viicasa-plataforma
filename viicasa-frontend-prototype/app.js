@@ -49,13 +49,13 @@ function activate(index){
   document.querySelectorAll('.scene').forEach((s,i)=>s.classList.toggle('active',i===index));
   document.querySelectorAll('#dots button').forEach((b,i)=>b.setAttribute('aria-current',String(i===index)));
   const atEnd=index===(continuation?3:2);
-  $('#next').innerHTML=`${continuation&&index===2?t('service'):t(atEnd?'restart':'next')} <span aria-hidden="true">${atEnd?'↑':'↓'}</span>`;
+  $('#next').innerHTML=`${continuation&&index===2?t(page==='shop'?'shop':'service'):t(atEnd?'restart':'next')} <span aria-hidden="true">${atEnd?'↑':'↓'}</span>`;
   setMediaState();
 }
 function go(index){const target=index===3?continuation:document.querySelectorAll('.scene')[index];scrollFeedTo(feed,target,{behavior:reduced.matches?'instant':'smooth'});}
 export function attachServiceForm(section){
   continuation=section;observer?.disconnect();feed.classList.add('has-service-form');
-  $('#dots').insertAdjacentHTML('beforeend',`<button aria-label="${lang==='es'?'Elegir servicio':'Choose service'}" data-go="3">04</button>`);
+  $('#dots').insertAdjacentHTML('beforeend',`<button aria-label="${page==='shop'?t('shop'):lang==='es'?'Elegir servicio':'Choose service'}" data-go="3">04</button>`);
   $('#dots button[data-go="3"]').onclick=()=>go(3);$('.rail-total').textContent='04';
   const sync=()=>{
     if(!section.isConnected)return;
