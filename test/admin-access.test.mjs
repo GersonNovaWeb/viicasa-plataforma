@@ -9,7 +9,7 @@ import {hash,passwordHash,passwordMatches} from '../viicasa-backend/src/lib.js';
 import {key,now} from '../viicasa-backend/src/firestore-store.js';
 import {adminPasswordEnabled,passwordAdminLogin,adminCookieSecret} from '../viicasa-frontend-prototype/admin-password-session.mjs';
 import {ensureConfiguredAdmin} from '../viicasa-frontend-prototype/admin-bootstrap.mjs';
-import {adminPasswordForm} from '../viicasa-frontend-prototype/admin-access-ui.js';
+import {adminPasswordForm,adminLoginPage} from '../viicasa-frontend-prototype/admin-access-ui.js';
 
 const password='Fixture-only-Strong-Pass-123!';
 function memoryStore(){
@@ -50,6 +50,23 @@ test('private provisioning creates one full admin with a hash and actor audit; d
   const viewer=await createUser(store,{name:'Viewer',email:'viewer@example.invalid',password,role:'viewer'});
   const session=await passwordAdminLogin(app,{email:viewer.email,password},{remoteAddress:'127.0.0.3'});
   assert.equal((await request(app,session.secret,'POST','/v1/admin/users',{...body,email:'forbidden@example.invalid'},'127.0.0.9')).statusCode,403);
+});
+
+test('editorial sign-in keeps translated, labelled credentials and separate Google/demo access',()=>{
+  for(const lang of ['es','en']){
+    const L=(es,en)=>lang==='en'?en:es;
+    const html=adminLoginPage(L,{passwordEnabled:true,googleEnabled:true});
+    assert.match(html,/aria-labelledby="admin-login-title"/);assert.match(html,/class="admin-login-visual"/);
+    assert.match(html,/src="\/assets\/interior.png" alt=""/);assert.match(html,/href="\/cuenta"/);
+    assert.match(html,/type="submit"/);assert.match(html,/type="button" class="admin-password-toggle"/);
+    assert.match(html,/aria-controls="admin-login-password" aria-pressed="false"/);
+    assert.match(html,/for="admin-login-email"/);assert.match(html,/id="admin-login-email"/);
+    assert.match(html,/for="admin-login-password"/);assert.match(html,/id="admin-login-password"/);
+    assert.match(html,lang==='en'?/Show password/:/Mostrar contraseña/);
+    assert.ok(!html.includes('concierge@viicasa.com'));assert.ok(!html.includes(password));
+    const demo=adminLoginPage(L,{demo:true,passwordEnabled:true});assert.match(demo,/id="demo-admin"/);assert.ok(!demo.includes('id="admin-password-login"'));
+    const disabled=adminLoginPage(L,{googleEnabled:true,passwordEnabled:false});assert.ok(!disabled.includes('id="admin-password-login"'));assert.match(disabled,/href="\/cuenta"/);
+  }
 });
 
 test('password cookie sessions are checked against server roles, expiration, active status and version',async t=>{
