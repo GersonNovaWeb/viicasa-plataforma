@@ -100,6 +100,14 @@ body.platform #feed{padding-top:var(--header-height,110px)}
 .social-login .form-message{font-size:14px;line-height:1.6;overflow-wrap:anywhere;margin-bottom:0}
 .social-login .form-message:empty{display:none}
 @media(max-width:700px){.social-login{max-width:none;padding:22px}}
+.admin-access-form{display:grid;gap:18px;width:100%;max-width:500px;margin:28px 0;padding:26px;border:1px solid var(--line);background:var(--surface)}
+.admin-access-form label{display:grid;gap:9px;min-width:0}
+.admin-access-form input{width:100%;min-width:0;box-sizing:border-box}
+.admin-access-form .consent{display:flex;align-items:flex-start;gap:12px}
+.admin-access-form .consent input{width:18px;flex:0 0 18px}
+.admin-access-form .form-message{margin:0;overflow-wrap:anywhere}
+.admin-sidebar .btn{margin-top:12px}
+@media(max-width:700px){.admin-access-form{padding:20px;box-sizing:border-box}}
 @media(max-width:1150px){.header,.platform .header{display:grid;grid-template-columns:auto 1fr;gap:8px 20px;padding:16px 4% 0}.header-actions{justify-content:flex-end}.header nav,.platform .header nav{grid-column:1/-1;order:3;justify-content:center;gap:28px}.platform #feed{padding-top:116px}}
 @media(max-width:700px){.header,.platform .header{padding:14px 15px 0;gap:8px}.header .wordmark{font-size:20px;letter-spacing:2px;grid-template-columns:24px auto;column-gap:7px}.header .mark{width:24px;height:32px;font-size:22px}.header .brand-caption{font-size:5px;letter-spacing:1.3px}.header-actions,.platform .header-actions{gap:4px}.header .currency-control select{width:69px;padding:8px 4px;font-size:10px}.header .languages button{padding:10px 4px}.header .account,.platform .header .account{padding:9px 7px;font-size:10px}.header nav,.platform .header nav{gap:24px;justify-content:center}.platform #feed{padding-top:105px}}
 @media(max-width:360px){.header,.platform .header{padding-left:10px;padding-right:10px}.header .wordmark{font-size:18px;letter-spacing:1px}.header .brand-caption{letter-spacing:.6px}.header nav,.platform .header nav{gap:17px}}

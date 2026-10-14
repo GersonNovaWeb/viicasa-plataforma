@@ -13,6 +13,8 @@ import {localEmulatorHost} from './local-emulator.mjs';
 import {platformModes} from './platform-modes.mjs';
 import {saveSocialCustomer,publicCustomer} from '../viicasa-backend/src/customer-registration.js';
 import {enabledSocialProviders,validateSocialIdentity,isAllowedGoogleAdmin} from '../viicasa-backend/src/social-auth.js';
+import {adminPasswordEnabled,passwordAdminLogin,adminCookieSecret} from './admin-password-session.mjs';
+import {ensureConfiguredAdmin} from './admin-bootstrap.mjs';
 const require=createRequire(new URL('../viicasa-backend/package.json',import.meta.url));
 const {initializeApp,applicationDefault,cert}=require('firebase-admin/app');
 const {getAuth}=require('firebase-admin/auth');
@@ -42,7 +44,12 @@ export async function platformReady(){
     const r=await fetch(`http://${emulatorHost}/emulator/v1/projects/demo-viicasa-platform:securityRules`,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({rules:{files:[{name:'security.rules',content}]}}),signal:AbortSignal.timeout(5000)});
     if(!r.ok)throw Error('Local security rules could not be applied');
   }
-  const app=await api();if(demo){await seed(app.store);await seedDemoPricing(app.store);}return app;
+  const app=await api();if(demo){await seed(app.store);await seedDemoPricing(app.store);}
+  else{
+    const result=await ensureConfiguredAdmin(app.store,process.env,{demo,projectId:config.firebaseProjectId});
+    if(result.state==='created')console.log('VIICASA: acceso administrativo inicial creado.');
+  }
+  return app;
 }
 let seeded=false;
 async function seed(store){
@@ -82,8 +89,14 @@ export async function handlePlatform(req,res,url){
     limit(req);
     const mutation=!['GET','HEAD'].includes(req.method);
     if(mutation&&path!=='/v1/webhooks/stripe'&&req.headers.origin!==origin)fail(403,'Origen no permitido');
-    if(path==='/api/config'&&req.method==='GET'){json(res,200,{demo,viilifeMode:config.viilifeMode,...locationPreference(req,(process.env.TRUSTED_PROXY_IPS||'').split(',').map(s=>s.trim()).filter(Boolean)),commerceEnabled:writesOpen(),payment:config.paymentProvider,googleEnabled:socialProviders().google,authProviders:socialProviders(),firebase:!demo?{apiKey:process.env.FIREBASE_WEB_API_KEY,authDomain:process.env.FIREBASE_AUTH_DOMAIN||'viicasa.firebaseapp.com',projectId:config.firebaseProjectId,appId:process.env.FIREBASE_WEB_APP_ID}:null});return true;}
+    if(path==='/api/config'&&req.method==='GET'){json(res,200,{demo,adminPasswordEnabled:adminPasswordEnabled(process.env,demo),viilifeMode:config.viilifeMode,...locationPreference(req,(process.env.TRUSTED_PROXY_IPS||'').split(',').map(s=>s.trim()).filter(Boolean)),commerceEnabled:writesOpen(),payment:config.paymentProvider,googleEnabled:socialProviders().google,authProviders:socialProviders(),firebase:!demo?{apiKey:process.env.FIREBASE_WEB_API_KEY,authDomain:process.env.FIREBASE_AUTH_DOMAIN||'viicasa.firebaseapp.com',projectId:config.firebaseProjectId,appId:process.env.FIREBASE_WEB_APP_ID}:null});return true;}
     const app=await api();const store=app.store;
+    if(path==='/api/admin-login'&&req.method==='POST'){
+      if(!adminPasswordEnabled(process.env,demo))fail(404,'No disponible');
+      let input;try{input=JSON.parse((await payload(req)).toString());}catch(error){if(error.statusCode)throw error;fail(400,'Datos inválidos');}
+      const session=await passwordAdminLogin(app,input,{remoteAddress:clientIp(req,(process.env.TRUSTED_PROXY_IPS||'').split(',').map(s=>s.trim()).filter(Boolean)),previousSecret:cookies(req).vc_admin});
+      secretCookie(res,'vc_admin',session.secret,session.expiresIn);json(res,200,{ok:true});return true;
+    }
     if(['/api/auth/google','/api/auth/social'].includes(path)&&req.method==='POST'){
       if(demo||!process.env.FIREBASE_WEB_API_KEY)fail(503,'El acceso social no está habilitado en este entorno');
       const input=JSON.parse((await payload(req)).toString());if(typeof input.idToken!=='string'||input.idToken.length>16000)fail(400,'Token inválido');
@@ -105,17 +118,21 @@ export async function handlePlatform(req,res,url){
       if(!record){const user=await createUser(store,{email:'demo@example.invalid',name:'Administrador de demostración',password:token()});record={owner:user.id};}
       const user=await store.get('users',record.owner),secret=token();await store.set('sessions',hash(secret),{user_id:user.id,auth_version:user.auth_version,expires_at:afterMinutes(480)});secretCookie(res,'vc_admin',secret);json(res,200,{ok:true});return true;
     }
+    // An administrative password session is independent from customer OAuth.
+    // An expired customer identity must not invalidate a valid admin session.
+    const passwordSecret=path.startsWith('/api/admin/')&&adminPasswordEnabled(process.env,demo)?await adminCookieSecret(app,cookies(req).vc_admin):null;
     const g=await guest(app,req,res);
     let verified;
     const identityUid=g.row.firebase_uid||g.row.google_uid;
-    if(identityUid){try{verified=await auth().verifySessionCookie(cookies(req).vc_identity||'',true);if(verified.uid!==identityUid)throw Error();validateSocialIdentity(verified,socialProviders());}catch{for(const name of ['vc_guest','vc_identity'])secretCookie(res,name,'',0);fail(401,'Vuelve a iniciar sesión para continuar');}}
+    if(identityUid&&!passwordSecret){try{verified=await auth().verifySessionCookie(cookies(req).vc_identity||'',true);if(verified.uid!==identityUid)throw Error();validateSocialIdentity(verified,socialProviders());}catch{for(const name of ['vc_guest','vc_identity'])secretCookie(res,name,'',0);fail(401,'Vuelve a iniciar sesión para continuar');}}
     if(path==='/api/account'&&req.method==='GET'){
       const records=await store.list('checkouts',{where:[['guest_id','==',g.row.id]],limit:100});
       json(res,200,{profile:identityUid?publicCustomer(g.row):null,items:records.sort((a,b)=>b.created_at.localeCompare(a.created_at)).map(safeCheckout),demo});return true;
     }
     let target=path.replace(/^\/api/,'/v1'),secret=g.secret;
     if(path.startsWith('/api/admin/')){
-      if(!demo){if(!isAllowedGoogleAdmin(verified,process.env.ADMIN_EMAILS))fail(403,'Acceso administrativo denegado');
+      if(passwordSecret)secret=passwordSecret;
+      else if(!demo){if(!isAllowedGoogleAdmin(verified,process.env.ADMIN_EMAILS))fail(403,'Acceso administrativo denegado');
         // Roles remain server-owned. Provision only an explicitly allowed verified Google identity.
         let index=await store.get('unique_keys',key('email',verified.email.toLowerCase()));
         if(!index){const u=await createUser(store,{email:verified.email,name:verified.name||verified.email,password:token()});index={owner:u.id};}
@@ -123,15 +140,19 @@ export async function handlePlatform(req,res,url){
       }else secret=cookies(req).vc_admin;
       if(!secret)fail(401,'Acceso administrativo requerido');
     }
+    const adminAuthRoute=path==='/api/admin/auth'||path==='/api/admin/password';
+    if(adminAuthRoute)target=path==='/api/admin/auth'?'/v1/auth/me':'/v1/auth/password';
     const allowed=/^\/v1\/(properties(?:\/[^/]+)?|products(?:\/[^/]+)?|shop\/settings|cleaning\/(?:settings|quote|requests|preferences)|bookings(?:\/quote)?|cart(?:\/items\/[^/]+)?|orders|checkouts\/[^/]+(?:\/(?:payment|cancel))?|inquiries|admin\/.+|media\/[^/]+|webhooks\/stripe)$/;
     const viilifeLiveRoute=/^\/v1\/viilife\/(settings|quote|requests)$/;
     const viilifeDemoRoute=/^\/v1\/viilife-demo\/(settings|quote|requests(?:\/[a-f0-9-]+(?:\/pay)?)?)$/;
-    if(!allowed.test(target)&&!viilifeDemoRoute.test(target)&&!viilifeLiveRoute.test(target))fail(404,'Ruta no encontrada');
+    if(!allowed.test(target)&&!viilifeDemoRoute.test(target)&&!viilifeLiveRoute.test(target)&&!adminAuthRoute)fail(404,'Ruta no encontrada');
     if(mutation&&!writesOpen()&&['/v1/bookings','/v1/orders','/v1/inquiries','/v1/cleaning/requests','/v1/viilife/requests'].includes(target))fail(503,'El registro de operaciones todavía no está habilitado');
     const body=mutation?await payload(req):undefined;
     const headers={authorization:`Bearer ${secret||''}`};for(const h of ['content-type','idempotency-key','stripe-signature'])if(req.headers[h])headers[h]=req.headers[h];
     // No browser-provided Authorization or admin role is forwarded.
     const response=await app.inject({method:req.method,url:target+url.search,headers,remoteAddress:clientIp(req,(process.env.TRUSTED_PROXY_IPS||'').split(',').map(s=>s.trim()).filter(Boolean))||'127.0.0.1',payload:body?.length?body:undefined});
+    if(path==='/api/admin/auth'&&req.method==='GET'&&response.statusCode===200){json(res,200,{...response.json(),password_login:Boolean(passwordSecret)});return true;}
+    if(path==='/api/admin/password'&&req.method==='POST'&&response.statusCode===204)secretCookie(res,'vc_admin','',0);
     res.writeHead(response.statusCode,{'Content-Type':response.headers['content-type']||'application/json','Cache-Control':'no-store'});res.end(response.rawPayload);
   }catch(error){json(res,error.statusCode||503,{error:error.statusCode?error.message:'Servicio no disponible. Reintenta en unos momentos.'});}
   return true;

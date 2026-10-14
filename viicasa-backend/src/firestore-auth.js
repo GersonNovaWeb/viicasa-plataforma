@@ -3,10 +3,10 @@ import {now,afterMinutes,key,auditDoc,claimUnique,must} from './firestore-store.
 import {object,email,str} from './schemas.js';
 
 const safeUser=u=>({id:u.id,name:u.name,email:u.email,role:u.role});
-export async function createUser(store,{email,name,password,role='admin'}){
+export async function createUser(store,{email,name,password,role='admin',createdBy}){
   const user={id:id(),email:email.trim().toLowerCase(),name,password_hash:await passwordHash(password),role,active:true,auth_version:1,created_at:now()};
   await store.transaction(async tx=>{
-    await claimUnique(tx,'email',user.email,user.id);tx.create('users',user.id,user);auditDoc(tx,user.id,'user.bootstrap',user.id);
+    await claimUnique(tx,'email',user.email,user.id);tx.create('users',user.id,user);auditDoc(tx,createdBy||user.id,createdBy?'admin.user_created':'user.bootstrap',user.id);
   });return safeUser(user);
 }
 export function guards(store){
@@ -47,6 +47,12 @@ export async function registerAuth(app,store,config,guard){
     });return{token:secret,expires_in:config.sessionHours*3600,user:safeUser(user)};
   });
   const schema={tags:['Acceso'],security:[{bearerAuth:[]}]};
+  // Only an existing full administrator can provision another administrator.
+  // No public registration or caller-provided role is accepted here.
+  app.post('/v1/admin/users',{preHandler:guard.admin(['admin']),schema:{...schema,body:object({email,name:str(120,2),password:str(128,12)})},config:{rateLimit:{max:5,timeWindow:'1 minute'}}},async(request,reply)=>{
+    const user=await createUser(store,{...request.body,role:'admin',createdBy:request.user.id});
+    reply.code(201);return user;
+  });
   app.get('/v1/auth/me',{preHandler:guard.admin(),schema},async request=>request.user);
   app.post('/v1/auth/logout',{preHandler:guard.admin(),schema},async(request,reply)=>{
     await store.transaction(async tx=>{tx.remove('sessions',bearer(request));});reply.code(204).send();

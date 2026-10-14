@@ -27,6 +27,7 @@
     "test:stripe-local": "node --test test/stripe-local.test.mjs",
     "test:stripe-cad": "node --test test/stripe-cad.test.mjs",
     "test:social-auth": "node --test test/social-auth.test.mjs",
+    "test:admin-access": "node --test test/admin-access.test.mjs",
     "build": "node scripts/check.mjs && node viicasa-backend/scripts/geoip.mjs",
     "check": "node scripts/check.mjs",
     "test:cleaning": "node --test test/cleaning.test.mjs",
