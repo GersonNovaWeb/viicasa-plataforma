@@ -54,11 +54,12 @@ function saveCheckout(tx,c,index){
 }
 export async function createBooking(store,config,guestId,idempotencyKey,input){
   return store.transaction(async tx=>{
-    if(config.production&&(await tx.get('properties',input.property_id))?.is_demo)fail(409,'Esta propiedad es de demostración y no admite reservas reales');
+    const sample=(await tx.get('properties',input.property_id))?.is_demo===true;
+    if(sample)requireSamplePaymentMode(config);
     const saved=await prior(tx,guestId,idempotencyKey,input,'booking');if(saved.row)return safeCheckout(saved.row);
     const estimate=await quote(tx,input);
     const c=checkoutRecord(config,guestId,idempotencyKey,saved.requestHash,'booking',input.customer,estimate.total_minor,
-      input.pay==='deposit'?estimate.deposit_minor:estimate.total_minor,estimate.currency,{...estimate,pay:input.pay});
+      input.pay==='deposit'?estimate.deposit_minor:estimate.total_minor,estimate.currency,{...estimate,pay:input.pay,...(sample?{is_demo:true}:{})});
     saveCheckout(tx,c,saved.index);
     // One deterministic document per property/night. Competing reservations read and write the same documents.
     for(const date of nightsBetween(input.check_in,input.check_out))tx.put('occupancy',occupancyId(input.property_id,date),{

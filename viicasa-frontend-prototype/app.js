@@ -1,5 +1,5 @@
 import {viilifeActions} from './viilife-actions.js';
-import {scrollFeedTo,resetPageScroll} from './scroll-navigation.js';
+import {scrollFeedTo,resetPageScroll,finishPageScroll} from './scroll-navigation.js';
 const $ = s => document.querySelector(s);
 const reduced = matchMedia('(prefers-reduced-motion: reduce)');
 let lang = 'es';
@@ -81,7 +81,7 @@ function render(){
   document.querySelectorAll('video').forEach(v=>{v.muted=true;v.onplaying=()=>v.classList.add('ready');v.onplay=()=>{const b=document.querySelector(`[data-video-pause="${v.dataset.index}"]`);if(b)b.textContent=t('videoPause');};v.onpause=()=>{const b=document.querySelector(`[data-video-pause="${v.dataset.index}"]`);if(b)b.textContent=t('videoPlay');};v.onerror=()=>{v.hidden=true;};});
   document.querySelectorAll('[data-sound]').forEach(b=>b.onclick=()=>{const v=document.querySelector(`video[data-index="${b.dataset.sound}"]`);v.muted=!v.muted;b.textContent=t(v.muted?'sound':'mute');});
   document.querySelectorAll('[data-video-pause]').forEach(b=>b.onclick=()=>{const v=document.querySelector(`video[data-index="${b.dataset.videoPause}"]`);if(v.paused){delete v.dataset.userPaused;playVideo(v);}else{v.dataset.userPaused='true';v.pause();}});
-  active=0;activate(active);resetPageScroll();
+  active=0;activate(active);resetPageScroll();finishPageScroll();
   observer=new IntersectionObserver(entries=>{for(const e of entries){if(e.isIntersecting&&e.intersectionRatio>=.5)activate([...feed.children].indexOf(e.target));}},{root:feed,threshold:[.5,.7]});[...feed.children].forEach(s=>observer.observe(s));
 }
 document.querySelectorAll('[data-language]').forEach(b=>b.onclick=()=>{lang=b.dataset.language;try{localStorage.setItem('viicasa-prototype-language',lang);}catch{/* optional storage */}render();});

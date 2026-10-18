@@ -86,7 +86,7 @@ export async function createCleaningRequest(store,config,guestId,idempotencyKey,
   return store.transaction(async tx=>{
     const guest=must(await tx.get('guests',guestId));if(guest.expires_at<=now())fail(401,'Sesión expirada');
     // Reuse the verified social account. Never create a login from an unverified typed email.
-    if(config.production&&!(guest.firebase_uid||guest.google_uid))fail(401,'Inicia sesión para registrar tu solicitud de limpieza.');
+    if(config.production&&!config.allowGuestCheckout&&!(guest.firebase_uid||guest.google_uid))fail(401,'Inicia sesión para registrar tu solicitud de limpieza.');
     if(guest.email&&guest.email.toLowerCase()!==input.customer.email.toLowerCase())fail(400,'Usa el correo de tu cuenta.');
     const requestHash=hash(JSON.stringify(input)),index=key('cleaning-request',`${guestId}:${idempotencyKey}`),existing=await tx.get('cleaning_idempotency',index);
     if(existing){if(existing.request_hash!==requestHash)fail(409,'La clave de solicitud ya se usó con otros datos.');return {request:customerRequest(must(await tx.get('cleaning_requests',existing.request_id))),checkout:existing.checkout_id?safeCheckout(must(await tx.get('checkouts',existing.checkout_id))):null};}

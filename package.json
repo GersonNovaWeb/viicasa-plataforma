@@ -8,6 +8,7 @@
     "node": ">=22.13.0"
   },
   "scripts": {
+    "test:checkout-resolution": "node --test test/checkout-resolution.test.mjs test/scroll-navigation.test.mjs test/viilife-actions.test.mjs test/demo-products.test.mjs test/startup.test.mjs test/stripe-cad.test.mjs",
     "start": "node --env-file-if-exists=.env server.js",
     "dev": "node viicasa-frontend-prototype/dev-local.mjs",
     "dev:viilife": "node viicasa-frontend-prototype/dev-viilife.mjs",

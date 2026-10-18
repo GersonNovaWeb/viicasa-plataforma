@@ -11,7 +11,7 @@ export async function startPayment(store,config,gateway,guestId,checkoutId){
   const {payment,checkout}=await store.transaction(async tx=>{
     const c=must(await tx.get('checkouts',checkoutId),'Operación no encontrada');
     if(c.guest_id!==guestId)fail(404,'Operación no encontrada');
-    if(c.kind==='order'&&c.detail.is_demo)requireSamplePaymentMode(config);
+    if(['order','booking'].includes(c.kind)&&c.detail.is_demo)requireSamplePaymentMode(config);
     if(c.kind==='cleaning'&&config.viilifeMode==='demo')fail(409,'ViiLife está en demostración; no se permiten cobros reales.');
     if(c.kind==='cleaning'&&c.approval&&c.approval.status!=='approved')fail(409,'El administrador debe aprobar este pedido antes del pago.');
     if(c.status!=='pending'||c.expires_at<=now())fail(409,'La operación ya no admite pagos');
@@ -32,7 +32,14 @@ export async function startPayment(store,config,gateway,guestId,checkoutId){
     tx.put('checkouts',c.id,{...c,expires_at:holdExpiry});tx.create('payments',p.id,p);
     return{payment:p,checkout:c};
   });
-  if(payment.reference)return publicPayment(payment);
+  if(payment.reference){
+    if(payment.provider==='stripe'&&gateway.retrieve){
+      await reconcilePayment(store,config,gateway,guestId,checkoutId);
+      const refreshed=await store.get('payments',payment.id);
+      if(refreshed.status==='paid')return{...publicPayment(refreshed),checkout_url:null};
+    }
+    return publicPayment(payment);
+  }
   let session;
   try{session=await gateway.create(payment,checkout);}catch(error){
     if(error.statusCode)throw error;fail(502,'No se pudo iniciar el pago; reintenta sobre esta misma operación');
@@ -75,6 +82,16 @@ export async function settlePayment(store,config,event){
     }
     auditDoc(tx,null,`payment.${event.outcome}`,p.id,{provider:event.provider,event_id:event.id});return{received:true};
   });
+}
+export async function reconcilePayment(store,config,gateway,guestId,checkoutId){
+  const c=must(await store.get('checkouts',checkoutId),'Operación no encontrada');
+  if(c.guest_id!==guestId)fail(404,'Operación no encontrada');
+  const p=await store.get('payments',c.id);
+  if(!p||p.provider!=='stripe'||p.status==='paid'||!p.reference||!gateway.retrieve)return;
+  let session;try{session=await gateway.retrieve(p.reference);}catch{fail(502,'No pudimos verificar Stripe. Actualiza el estado; no vuelvas a pagar.');}
+  if(session.id!==p.reference||session.client_reference_id!==c.id||session.metadata?.checkout_id!==c.id||session.metadata?.payment_id!==p.id)fail(409,'La sesión de pago no corresponde al pedido');
+  if(session.payment_status!=='paid')return;
+  return settlePayment(store,config,{provider:'stripe',id:'verified-session:'+session.id,reference:session.id,outcome:'paid',amount:session.amount_total,currency:session.currency||''});
 }
 export async function stripeWebhook(store,config,gateway,raw,signature){
   const event=gateway.verify(raw,signature),session=event.data.object;

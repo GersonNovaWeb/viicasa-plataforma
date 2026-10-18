@@ -9,7 +9,7 @@ import {openFirestore,initializeStore,must,now} from './firestore-store.js';
 import {guards,registerAuth} from './firestore-auth.js';
 import {registerCatalog,listPage,pageSchema,adminSchema} from './firestore-catalog.js';
 import {cartItems,setCart,quote,createBooking,createOrder,safeCheckout,cancelCheckout,expireHolds} from './firestore-commerce.js';
-import {startPayment,settlePayment,stripeWebhook,deliverMail} from './firestore-payments.js';
+import {startPayment,settlePayment,stripeWebhook,deliverMail,reconcilePayment} from './firestore-payments.js';
 import {paymentGateway,publicPayment} from './payments.js';
 import {fail} from './lib.js';
 import * as s from './firestore-schemas.js';
@@ -70,6 +70,10 @@ export async function buildFirestoreApp(config,options={}){
   });
   app.post('/v1/checkouts/:id/cancel',{preHandler:guard.guest,schema:guestSchema('Operaciones',{params:s.idParams})},request=>cancelCheckout(store,config,request.params.id,request.guest.id));
   app.post('/v1/checkouts/:id/payment',{preHandler:guard.guest,schema:guestSchema('Pagos',{params:s.idParams})},request=>startPayment(store,config,gateway,request.guest.id,request.params.id));
+  app.post('/v1/checkouts/:id/reconcile',{preHandler:guard.guest,schema:guestSchema('Pagos',{params:s.idParams})},async request=>{
+    await reconcilePayment(store,config,gateway,request.guest.id,request.params.id);
+    return checkoutDetail(request.params.id,request.guest.id);
+  });
   if(config.paymentProvider==='demo'&&!config.production)app.post('/v1/admin/payments/:id/simulate',{preHandler:guard.admin(['admin']),schema:adminSchema('Pagos demo',{
     params:s.idParams,body:s.object({event_id:s.str(100,8),outcome:s.choice(['paid','failed','expired'])})})},async request=>{
     const p=must(await store.get('payments',request.params.id),'Pago demo no encontrado');if(p.provider!=='demo'||!p.reference)fail(404,'Pago demo no encontrado');
