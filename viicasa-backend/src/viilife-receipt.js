@@ -22,7 +22,7 @@ export async function renderViiLifeReceipt(data){
   const {quote,customer,address={},schedule={}}=data;
   if(!/^[A-Z]{3}$/.test(quote.currency)||![quote.total_minor,data.paidMinor].every(n=>Number.isSafeInteger(n)&&n>=0))throw Error('Invalid receipt amount');
   const cash=n=>`${(n/100).toLocaleString('en-CA',{minimumFractionDigits:2,maximumFractionDigits:2})} ${quote.currency}`;
-  const pdf=new PDFDocument({size:'LETTER',margin:44,bufferPages:true,info:{Title:`${brand} payment receipt`,Author:'VIICASA',CreationDate:new Date(data.issuedAt)}});
+  const pdf=new PDFDocument({size:'LETTER',margin:44,bufferPages:true,info:{Title:`${brand} payment receipt`,Author:'VII',CreationDate:new Date(data.issuedAt)}});
   const chunks=[];
   const output=new Promise((resolve,reject)=>{pdf.on('data',chunk=>chunks.push(chunk));pdf.on('end',()=>resolve(Buffer.concat(chunks)));pdf.on('error',reject);});
   const W=524, left=44, green='#203d35', gold='#ab8b50', ink='#233a33';let y=0;
@@ -31,7 +31,7 @@ export async function renderViiLifeReceipt(data){
   const header=()=>{
     pdf.rect(0,0,612,104).fill('#111111');
     pdf.image(logo,left,20,{fit:[104,64],align:'center',valign:'center'});
-    text('VIICASA',380,30,188,23,'#ffffff','Times-Roman');
+    text('VII',380,30,188,23,'#ffffff','Times-Roman');
     text('THE ART OF BEING HOME',380,64,188,7,gold);
     pdf.rect(left,103,W,2).fill(gold);y=128;
   };
@@ -82,7 +82,7 @@ export async function renderViiLifeReceipt(data){
   for(let p=range.start;p<range.start+range.count;p++){
     pdf.switchToPage(p);pdf.page.margins.bottom=0;
     pdf.rect(0,723,612,69).fill('#111111');
-    text('VIICASA  |  Kelowna, British Columbia, Canada',left,737,W,9,'#ffffff');
+    text('VII  |  Kelowna, British Columbia, Canada',left,737,W,9,'#ffffff');
     text('viicasa.com  |  contact@viicasa.com',left,756,420,8,gold);
     text(`${p+1} / ${range.count}`,520,756,48,8,'#ffffff');
   }
@@ -92,5 +92,5 @@ export async function renderViiLifeReceipt(data){
 export async function receiptAttachment(data){
   const reference=String(data.reference).replace(/[^a-zA-Z0-9_-]/g,'').slice(0,80)||'order';
   const brand=data.version===2?(data.kind==='booking'?'ViiConcierge':'ViiShop'):'ViiLife';
-  return {filename:`VIICASA-${brand}-Receipt-${reference}.pdf`,content:await renderViiLifeReceipt(data),contentType:'application/pdf',contentDisposition:'attachment'};
+  return {filename:`VII-${brand}-Receipt-${reference}.pdf`,content:await renderViiLifeReceipt(data),contentType:'application/pdf',contentDisposition:'attachment'};
 }

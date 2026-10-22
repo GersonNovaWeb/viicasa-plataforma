@@ -40,6 +40,7 @@ async function prior(tx,guestId,idempotencyKey,input,kind){
   if(guest.expires_at<=now())fail(401,'Sesión expirada');
   const index=key('checkout',`${guestId}:${idempotencyKey}`),saved=await tx.get('idempotency',index);
   const requestHash=hash(JSON.stringify({kind,input}));
+  if(saved){const owned=await tx.get('checkouts',saved.checkout_id);if(!owned||owned.guest_id!==guestId)fail(404,'Operación no encontrada');}
   if(saved && saved.request_hash!==requestHash)fail(409,'Esta clave de idempotencia ya se utilizó con otros datos');
   return{index,requestHash,row:saved?must(await tx.get('checkouts',saved.checkout_id)):null};
 }
@@ -94,11 +95,12 @@ export async function setCart(store,guestId,variantId,quantity){
 function movement(tx,variant,delta,reason,checkoutId=null,actor=null){
   const mid=id();tx.create('stock_movements',mid,{variant_id:variant.id,delta,reason,checkout_id:checkoutId,actor_id:actor,created_at:now()});
 }
-export async function createOrder(store,config,guestId,idempotencyKey,input){
+export async function createOrder(store,config,guestId,idempotencyKey,input,{directItems}={}){
   await expireHolds(store);
   return store.transaction(async tx=>{
     const saved=await prior(tx,guestId,idempotencyKey,input,'order');if(saved.row)return safeCheckout(saved.row);
-    const cart=await tx.get('carts',guestId);if(!cart?.items.length)fail(400,'El carrito está vacío');
+    const cart=directItems?{items:directItems}:await tx.get('carts',guestId);if(!cart?.items.length)fail(400,'El carrito está vacío');
+    if(new Set(cart.items.map(x=>x.variant_id)).size!==cart.items.length)fail(400,'No se permiten variantes duplicadas');
     const items=[];let total=0,currency=null,isDemo=false;
     for(const line of cart.items){
       const v=must(await tx.get('variants',line.variant_id),'Variante no encontrada'),p=must(await tx.get('products',v.product_id));
@@ -118,7 +120,7 @@ export async function createOrder(store,config,guestId,idempotencyKey,input){
       pickup_instructions:input.delivery==='pickup'?settings.pickup_instructions:null,terms:settings.terms,note:input.note||'',items,is_demo:isDemo};
     const c=checkoutRecord(config,guestId,idempotencyKey,saved.requestHash,'order',input.customer,total,total,currency,detail);
     for(const line of items){const v=await tx.get('variants',line.variant_id);tx.put('variants',v.id,{...v,stock:v.stock-line.quantity});movement(tx,v,-line.quantity,'checkout_hold',c.id);}
-    saveCheckout(tx,c,saved.index);tx.put('carts',guestId,{id:guestId,items:[]});return safeCheckout(c);
+    saveCheckout(tx,c,saved.index);if(!directItems)tx.put('carts',guestId,{id:guestId,items:[]});return safeCheckout(c);
   });
 }
 export async function updateOccupancy(tx,checkout,status,expiry=checkout.expires_at){

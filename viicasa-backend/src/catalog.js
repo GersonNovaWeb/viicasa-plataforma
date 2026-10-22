@@ -132,7 +132,7 @@ export async function registerCatalog(app,db,config,guard) {
     const result=await db.transaction(async tx=>{
       if(data.property_id && !await one(tx,'SELECT id FROM properties WHERE id=$1 AND published=true AND archived=false',[data.property_id]))fail(404,'Propiedad no encontrada');
       const row=await one(tx,'INSERT INTO inquiries(id,property_id,name,email,phone,message) VALUES($1,$2,$3,$4,$5,$6) RETURNING id',[id(),data.property_id||null,data.name,data.email,data.phone,data.message]);
-      await enqueue(tx,`inquiry:${row.id}`,config.adminEmail,'VIICASA · Nueva consulta',`${data.name}\n${data.email}\n${data.phone}\n${data.message}`);return row;
+      await enqueue(tx,`inquiry:${row.id}`,config.adminEmail,'VII · Nueva consulta',`${data.name}\n${data.email}\n${data.phone}\n${data.message}`);return row;
     });reply.code(201);return result;
   });
   app.get('/v1/admin/inquiries',{preHandler:guard.admin(['admin','support','viewer']),schema:adminSchema('Consultas',{querystring:s.pagination})},async request=>({items:(await db.query('SELECT * FROM inquiries ORDER BY created_at DESC,id LIMIT $1 OFFSET $2',pageArgs(request))).rows}));

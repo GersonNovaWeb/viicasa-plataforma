@@ -17,6 +17,7 @@ import {listRegisteredCustomers} from './customer-registration.js';
 import {registerCleaning} from './cleaning.js';
 import {registerViiLifeDemo,maintainViiLifeDemo} from './viilife-demo.js';
 import {registerViiLifeLive,maintainViiLifeLive} from './viilife-live.js';
+import {registerLaunchCorrections} from './launch-corrections.js';
 
 export async function buildFirestoreApp(config,options={}){
   const store=options.store||await openFirestore(config);
@@ -37,8 +38,8 @@ export async function buildFirestoreApp(config,options={}){
     reply.code(status).send({error:status>=500&&!error.statusCode?'Error interno':error.message,request_id:request.id});
   });
   await app.register(cors,{origin:config.origins,credentials:false,allowedHeaders:['Content-Type','Authorization','Idempotency-Key'],methods:['GET','POST','PUT','PATCH','DELETE','OPTIONS']});
-  await app.register(helmet);await app.register(rateLimit,{max:options.testing?100000:120,timeWindow:'1 minute'});await app.register(multipart);
-  await app.register(swagger,{openapi:{info:{title:'VIICASA API · Fase 1 · Firestore',version:'0.2.0',description:'Backend Node.js para Hostinger y Firestore. Importes en centavos.'},
+  await app.register(helmet);await app.register(rateLimit,{max:request=>options.testing?100000:['GET','HEAD'].includes(request.method)?600:120,keyGenerator:request=>request.ip+':'+(['GET','HEAD'].includes(request.method)?'read':'write'),timeWindow:'1 minute'});await app.register(multipart);
+  await app.register(swagger,{openapi:{info:{title:'VII API · Fase 1 · Firestore',version:'0.2.0',description:'Backend Node.js para Hostinger y Firestore. Importes en centavos.'},
     components:{securitySchemes:{bearerAuth:{type:'http',scheme:'bearer'},guestAuth:{type:'http',scheme:'bearer',description:'Token de /v1/guest-sessions'}}}}});
   if(!config.production)await app.register(swaggerUi,{routePrefix:'/docs'});
   app.get('/health',{schema:{hide:true}},async()=>({status:'ok'}));
@@ -48,6 +49,7 @@ export async function buildFirestoreApp(config,options={}){
   await registerCleaning(app,store,config,guard);
   await registerViiLifeLive(app,store,config,guard);
   await registerViiLifeDemo(app,store,config,guard);
+  await registerLaunchCorrections(app,store,config,guard);
   const guestSchema=(tag,extra={})=>({tags:[tag],security:[{guestAuth:[]}],...extra});
   app.get('/v1/cart',{preHandler:guard.guest,schema:guestSchema('Carrito',{querystring:s.object({currency:s.currency},[])})},request=>cartItems(store,request.guest.id,request.query.currency));
   app.put('/v1/cart/items/:id',{preHandler:guard.guest,schema:guestSchema('Carrito',{params:s.idParams,body:s.object({quantity:s.int(1,99)})})},request=>setCart(store,request.guest.id,request.params.id,request.body.quantity));
@@ -106,10 +108,10 @@ export async function buildFirestoreApp(config,options={}){
     await maintainViiLifeDemo(store,config);
     await maintainViiLifeLive(store,config);
     // A missing expiry index must not prevent the independent email queue running.
-    try{await expireHolds(store);}catch(error){console.error('VIICASA maintenance: checkout expiry failed',typeof error.code==='number'?error.code:'internal');}
+    try{await expireHolds(store);}catch(error){console.error('VII maintenance: checkout expiry failed',typeof error.code==='number'?error.code:'internal');}
     mailDelivery.last_attempt=now();
     try{const result=await deliverMail(store,config);mailDelivery.last_error=result.receiptFailed?'PDF_RECEIPT_FAILED':result.failed?'SMTP_DELIVERY_FAILED':null;}
-    catch(error){mailDelivery.last_error=error.code===9?'FIRESTORE_PRECONDITION':'MAIL_QUEUE_FAILED';console.error('VIICASA mail queue:',mailDelivery.last_error);}
+    catch(error){mailDelivery.last_error=error.code===9?'FIRESTORE_PRECONDITION':'MAIL_QUEUE_FAILED';console.error('VII mail queue:',mailDelivery.last_error);}
     const expired=await store.list('sessions',{where:[['expires_at','<=',now()]],limit:100});
     await store.transaction(async tx=>{for(const row of expired)tx.remove('sessions',row.id);});
   });

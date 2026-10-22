@@ -17,7 +17,7 @@ if(process.argv.includes('--check')){
     const response=await fetch('http://127.0.0.1:8088/',{signal:AbortSignal.timeout(3000)});
     if(!response.ok)throw new Error();
   }catch{console.error('El emulador de Firestore no está disponible en 127.0.0.1:8088. Inícialo antes de npm run dev:stripe.');process.exit(1);}
-  console.log('VIICASA · Stripe sandbox · Firestore local · Sin cobros reales.');
+  console.log('VII · Stripe sandbox · Firestore local · Sin cobros reales.');
   try {await import('./server.mjs');}
   catch {console.error('No se pudo iniciar el servidor de pruebas. Revisa el emulador y la configuración local.');process.exit(1);}
 }

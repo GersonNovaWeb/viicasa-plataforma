@@ -1,0 +1,64 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import Fastify from 'fastify';
+import {randomUUID} from 'node:crypto';
+import {registerLaunchCorrections} from '../viicasa-backend/src/launch-corrections.js';
+import {key,afterMinutes} from '../viicasa-backend/src/firestore-store.js';
+import {token,fail} from '../viicasa-backend/src/lib.js';
+import {createOrder} from '../viicasa-backend/src/firestore-commerce.js';
+import {preferredLanguage,saveLanguage} from '../viicasa-frontend-prototype/language.js';
+import {tileMarkup} from '../viicasa-frontend-prototype/vii-tiles.js';
+export function memoryStore(){
+  let rows=new Map();const clone=x=>x==null?x:structuredClone(x);
+  const ops=map=>({get:async(c,k)=>clone(map.get(c+'/'+k)||null),put:(c,k,v)=>map.set(c+'/'+k,clone({...v,id:k})),create:(c,k,v)=>{assert.ok(!map.has(c+'/'+k));map.set(c+'/'+k,clone({...v,id:k}));},remove:(c,k)=>map.delete(c+'/'+k),list:async(c,o={})=>[...map.entries()].filter(([k])=>k.startsWith(c+'/')).map(([,v])=>clone(v)).filter(v=>(o.where||[]).every(([f,op,x])=>op==='=='?v[f]===x:op==='<='?v[f]<=x:op==='>'?v[f]>x:false)).slice(0,o.limit||100)});
+  return{get:(...a)=>ops(rows).get(...a),set:(...a)=>ops(rows).put(...a),list:(...a)=>ops(rows).list(...a),transaction:async fn=>{const next=structuredClone(rows),result=await fn(ops(next));rows=next;return result;}};
+}
+const config={siteUrl:'https://example.invalid',adminEmail:'team@example.invalid',paymentProvider:'stripe',stripeMode:'test',stripeKey:'sk_test_fixture',holdMinutes:30};
+async function fixture(){const store=memoryStore(),app=Fastify({ajv:{customOptions:{removeAdditional:false}}});app.setErrorHandler((e,r,reply)=>reply.code(e.statusCode||500).send({error:e.message}));
+  const guard={admin:()=>async r=>{if(r.headers.authorization!=='Bearer admin')fail(403,'Denied');r.user={id:'admin'};},guest:async r=>{r.guest={id:r.headers['x-guest']||'buyer'};}};
+  await registerLaunchCorrections(app,store,config,guard);await app.ready();return{app,store};
+}
+test('waitlist consent, deduplication, real recipient and admin isolation',async t=>{const{app,store}=await fixture();t.after(()=>app.close());
+  const payload={name:'New visitor',email:'visitor@example.invalid',segment:'viilife',consent:true};
+  assert.equal((await app.inject({method:'POST',url:'/v1/waitlist',payload:{...payload,consent:false}})).statusCode,400);
+  for(let n=0;n<2;n++)assert.equal((await app.inject({method:'POST',url:'/v1/waitlist',payload})).statusCode,200);
+  assert.equal((await store.list('launch_waitlist')).length,1);assert.equal((await store.list('mail_outbox'))[0].recipient,payload.email);
+  assert.equal((await app.inject('/v1/admin/waitlist')).statusCode,403);
+});
+test('partner review, one-use invitation, role login and owned resources',async t=>{const{app,store}=await fixture();t.after(()=>app.close());
+  const email='seller@example.invalid',payload={name:'Seller Person',email,role:'seller',consent:true};
+  assert.equal((await app.inject({method:'POST',url:'/v1/partner-applications',payload:{...payload,role:'admin'}})).statusCode,400);
+  assert.equal((await app.inject({method:'POST',url:'/v1/partner-applications',payload})).statusCode,200);
+  assert.equal((await store.list('partner_accounts')).length,0);
+  const application=(await store.list('partner_applications'))[0];
+  assert.equal((await app.inject({method:'POST',url:`/v1/admin/partner-applications/${application.id}/approve`,payload:{}})).statusCode,403);
+  const approved=await app.inject({method:'POST',url:`/v1/admin/partner-applications/${application.id}/approve`,headers:{authorization:'Bearer admin'},payload:{}});assert.equal(approved.statusCode,200,approved.body);assert.ok(!approved.body.includes('token'));
+  const invitation=(await store.list('mail_outbox')).find(x=>x.subject.includes('access is ready'));const secret=new URL(invitation.body.match(/https:\/\/example\.invalid\/socios\/activar\?token=[\w-]+/)[0]).searchParams.get('token');
+  const password='Test-password-2026-only!';
+  assert.equal((await app.inject({method:'POST',url:'/v1/partners/activate',payload:{token:secret,password}})).statusCode,200);
+  assert.equal((await app.inject({method:'POST',url:'/v1/partners/activate',payload:{token:secret,password}})).statusCode,409);
+  assert.equal((await app.inject({method:'POST',url:'/v1/partners/login',payload:{email,password,role:'host'}})).statusCode,401);
+  const login=await app.inject({method:'POST',url:'/v1/partners/login',payload:{email,password,role:'seller'}});assert.equal(login.statusCode,200,login.body);const headers={authorization:'Bearer '+login.json().token};
+  const product=randomUUID();await store.set('products',product,{name:'Owned product',slug:'owned',published:true});await store.set('products','other',{name:'Other product',published:true});
+  const account=key('partner-email',email);
+  assert.equal((await app.inject({method:'POST',url:`/v1/admin/partners/${account}/resources`,headers:{authorization:'Bearer admin'},payload:{collection:'products',resource_id:product}})).statusCode,200);
+  const dash=await app.inject({url:'/v1/partners/dashboard',headers});assert.equal(dash.statusCode,200,dash.body);assert.equal(dash.json().items.length,1);assert.equal(dash.json().commercialReady,false);
+  assert.equal((await app.inject({url:'/v1/admin/waitlist',headers})).statusCode,403);
+  await app.inject({method:'POST',url:'/v1/partners/logout',headers});assert.equal((await app.inject({url:'/v1/partners/dashboard',headers})).statusCode,401);
+});
+test('direct checkout uses server CAD prices, preserves basket, reserves stock once',async()=>{
+  const store=memoryStore(),product=randomUUID(),variant=randomUUID();await store.set('guests','buyer',{expires_at:afterMinutes(60)});
+  await store.set('products',product,{name:'Object',published:true});await store.set('variants',variant,{product_id:product,name:'Natural',sku:'QA',active:true,stock:4,prices:{CAD:1500},currency:'CAD',price_minor:1500});
+  await store.set('shop_settings','CAD',{pickup_enabled:true,shipping_enabled:true,shipping_minor:700});await store.set('carts','buyer',{items:[{variant_id:'unrelated',quantity:1}]});
+  const body={currency:'CAD',customer:{name:'Actual buyer',email:'buyer@example.invalid',phone:'1234567',consent:true},delivery:'pickup',items:[{variant_id:variant,quantity:2}]};const idempotency=token();
+  const first=await createOrder(store,config,'buyer',idempotency,body,{directItems:body.items});assert.equal(first.total_minor,3000);assert.equal(first.customer_email,body.customer.email);
+  assert.equal((await createOrder(store,config,'buyer',idempotency,body,{directItems:body.items})).id,first.id);assert.equal((await store.get('variants',variant)).stock,2);assert.equal((await store.get('carts','buyer')).items[0].variant_id,'unrelated');
+  const duplicate={...body,items:[...body.items,...body.items]};await assert.rejects(createOrder(store,config,'buyer',token(),duplicate,{directItems:duplicate.items}),e=>e.statusCode===400);
+});
+test('notification ownership and read watermark',async t=>{const{app,store}=await fixture();t.after(()=>app.close());await store.set('checkouts','one',{guest_id:'buyer',kind:'cleaning',created_at:'2026-10-22T12:00:00Z'});await store.set('checkouts','other',{guest_id:'other',kind:'booking',created_at:'2026-10-22T12:00:00Z'});
+  const data=(await app.inject('/v1/client/notifications')).json();assert.equal(data.orders.count,1);assert.equal(data.agenda.count,0);
+  await app.inject({method:'PUT',url:'/v1/client/notifications/seen',payload:{section:'orders'}});assert.equal((await app.inject('/v1/client/notifications')).json().orders.count,0);
+});
+test('browser locale, persisted choice and distinct tile CTA',()=>{const map=new Map(),storage={getItem:k=>map.get(k),setItem:(k,v)=>map.set(k,v)};assert.equal(preferredLanguage(storage,['en-CA']),'en');assert.equal(preferredLanguage(storage,['es-MX']),'es');saveLanguage('en',storage);assert.equal(preferredLanguage(storage,['es']),'en');
+  for(const[key,href,target]of [['product:123','/shop/example','/checkout?product=example'],['property:123','/viiconcierge/villa','/checkout?property=villa']]){const html=tileMarkup({key,href,brand:'shop',title:'Example',description:'',amount:100,action:'Buy'},{L:(es,en)=>en,esc:String,money:String});assert.ok(html.includes('href="'+href+'"'));assert.ok(html.includes('href="'+target+'"'));}
+});

@@ -8,6 +8,9 @@
     "node": ">=22.13.0"
   },
   "scripts": {
+    "preview:integrated": "node scripts/preview-integrated.mjs",
+    "test:launch-corrections": "node --test test/launch-corrections.test.mjs test/guest-claim.test.mjs test/ux-final-mobile.test.mjs test/section-motion.test.mjs test/checkout-resolution.test.mjs test/admin-access.test.mjs test/platform-mail.test.mjs",
+    "phase2:migrate": "node phase2/migrate.mjs",
     "test:checkout-resolution": "node --test test/checkout-resolution.test.mjs test/scroll-navigation.test.mjs test/viilife-actions.test.mjs test/demo-products.test.mjs test/startup.test.mjs test/stripe-cad.test.mjs",
     "start": "node --env-file-if-exists=.env server.js",
     "dev": "node viicasa-frontend-prototype/dev-local.mjs",
@@ -53,6 +56,7 @@
     "file-type": "^22.0.2",
     "firebase-admin": "^14.3.0",
     "ip-location-api": "5.0.2",
+    "jose": "^6.2.12",
     "nodemailer": "^9.1.1",
     "pdfkit": "^0.20.2",
     "pg": "^8.23.0",

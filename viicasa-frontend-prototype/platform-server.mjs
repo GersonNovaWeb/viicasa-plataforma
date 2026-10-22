@@ -11,7 +11,7 @@ import {createUser} from '../viicasa-backend/src/firestore-auth.js';
 import {seedDemoPricing} from './demo-pricing.mjs';
 import {localEmulatorHost} from './local-emulator.mjs';
 import {platformModes} from './platform-modes.mjs';
-import {saveSocialCustomer,publicCustomer} from '../viicasa-backend/src/customer-registration.js';
+import {saveSocialCustomer,attachGuestPurchases,publicCustomer} from '../viicasa-backend/src/customer-registration.js';
 import {enabledSocialProviders,validateSocialIdentity,isAllowedGoogleAdmin} from '../viicasa-backend/src/social-auth.js';
 import {adminPasswordEnabled,passwordAdminLogin,adminCookieSecret} from './admin-password-session.mjs';
 import {ensureConfiguredAdmin} from './admin-bootstrap.mjs';
@@ -49,7 +49,7 @@ export async function platformReady(){
   const app=await api();if(demo){await seed(app.store);await seedDemoPricing(app.store);}
   else{
     const result=await ensureConfiguredAdmin(app.store,process.env,{demo,projectId:config.firebaseProjectId});
-    if(result.state==='created')console.log('VIICASA: acceso administrativo inicial creado.');
+    if(result.state==='created')console.log('VII: acceso administrativo inicial creado.');
   }
   return app;
 }
@@ -72,9 +72,10 @@ const json=(res,status,value)=>{res.writeHead(status,{'Content-Type':'applicatio
 const requests=new Map();
 function limit(req){
   const minute=Math.floor(Date.now()/60000),address=clientIp(req,(process.env.TRUSTED_PROXY_IPS||'').split(',').map(s=>s.trim()).filter(Boolean));
-  const previous=requests.get(address);const count=previous?.minute===minute?previous.count+1:1;
-  requests.set(address,{minute,count});if(requests.size>5000)for(const [k,v]of requests)if(v.minute!==minute)requests.delete(k);
-  if(count>240)fail(429,'Demasiadas solicitudes. Espera un momento.');
+  const read=['GET','HEAD'].includes(req.method),bucket=address+':'+(read?'read':'write');
+  const previous=requests.get(bucket);const count=previous?.minute===minute?previous.count+1:1;
+  requests.set(bucket,{minute,count});if(requests.size>5000)for(const [k,v]of requests)if(v.minute!==minute)requests.delete(k);
+  if(count>(read?600:120))fail(429,'Demasiadas solicitudes. Espera un momento.');
 }
 async function payload(req){let size=0;const parts=[];for await(const p of req){size+=p.length;if(size>(req.headers['content-type']?.startsWith('multipart/')?8*1024*1024+65536:262144))fail(413,'Solicitud demasiado grande');parts.push(p);}return Buffer.concat(parts);}
 async function guest(app,req,res){let secret=cookies(req).vc_guest;const index=secret&&await app.store.get('guest_tokens',hash(secret));const row=index&&await app.store.get('guests',index.guest_id);if(row&&row.expires_at>now())return{secret,row};const response=await app.inject({method:'POST',url:'/v1/guest-sessions'});if(response.statusCode!==201)fail(response.statusCode,'No se pudo iniciar la sesión');const d=response.json();secretCookie(res,'vc_guest',d.token,2592000);return{secret:d.token,row:{id:d.id,expires_at:d.expires_at}};}
@@ -91,8 +92,13 @@ export async function handlePlatform(req,res,url){
     limit(req);
     const mutation=!['GET','HEAD'].includes(req.method);
     if(mutation&&path!=='/v1/webhooks/stripe'&&req.headers.origin!==origin)fail(403,'Origen no permitido');
-    if(path==='/api/config'&&req.method==='GET'){json(res,200,{demo,guestCheckoutEnabled:true,adminPasswordEnabled:adminPasswordEnabled(process.env,demo),viilifeMode:config.viilifeMode,...locationPreference(req,(process.env.TRUSTED_PROXY_IPS||'').split(',').map(s=>s.trim()).filter(Boolean)),commerceEnabled:writesOpen(),payment:config.paymentProvider,googleEnabled:socialProviders().google,authProviders:socialProviders(),firebase:!demo?{apiKey:process.env.FIREBASE_WEB_API_KEY,authDomain:process.env.FIREBASE_AUTH_DOMAIN||'viicasa.firebaseapp.com',projectId:config.firebaseProjectId,appId:process.env.FIREBASE_WEB_APP_ID}:null});return true;}
+    if(path==='/api/config'&&req.method==='GET'){json(res,200,{demo,phase:2,runtimeMode:'integrated',commercialReady:false,paymentMode:config.stripeMode||(config.stripeKey?.startsWith('sk_test_')?'test':'live'),guestCheckoutEnabled:true,adminPasswordEnabled:adminPasswordEnabled(process.env,demo),viilifeMode:config.viilifeMode,...locationPreference(req,(process.env.TRUSTED_PROXY_IPS||'').split(',').map(s=>s.trim()).filter(Boolean)),commerceEnabled:writesOpen(),payment:config.paymentProvider,googleEnabled:socialProviders().google,authProviders:socialProviders(),firebase:!demo?{apiKey:process.env.FIREBASE_WEB_API_KEY,authDomain:process.env.FIREBASE_AUTH_DOMAIN||'viicasa.firebaseapp.com',projectId:config.firebaseProjectId,appId:process.env.FIREBASE_WEB_APP_ID}:null});return true;}
     const app=await api();const store=app.store;
+    if(path==='/api/partner-login'&&req.method==='POST'){
+      const body=await payload(req),response=await app.inject({method:'POST',url:'/v1/partners/login',headers:{'content-type':'application/json'},payload:body,remoteAddress:clientIp(req,(process.env.TRUSTED_PROXY_IPS||'').split(',').filter(Boolean))||'127.0.0.1'});
+      if(response.statusCode!==200){json(res,response.statusCode,response.json());return true;}
+      const data=response.json();secretCookie(res,'vc_partner',data.token,28800);json(res,200,{profile:data.profile});return true;
+    }
     if(path==='/api/admin-login'&&req.method==='POST'){
       if(!adminPasswordEnabled(process.env,demo))fail(404,'No disponible');
       let input;try{input=JSON.parse((await payload(req)).toString());}catch(error){if(error.statusCode)throw error;fail(400,'Datos inválidos');}
@@ -108,6 +114,7 @@ export async function handlePlatform(req,res,url){
       const location=locationPreference(req,(process.env.TRUSTED_PROXY_IPS||'').split(',').map(s=>s.trim()).filter(Boolean));
       const identityCookie=await auth().createSessionCookie(input.idToken,{expiresIn:28800000});
       await saveSocialCustomer(store,user,location.country,secret,config);
+      await attachGuestPurchases(store,user,cookies(req).vc_guest);
       secretCookie(res,'vc_guest',secret,2592000);secretCookie(res,'vc_identity',identityCookie);
       json(res,200,{ok:true});return true;
     }
@@ -132,6 +139,7 @@ export async function handlePlatform(req,res,url){
       json(res,200,{profile:identityUid?publicCustomer(g.row):null,items:records.sort((a,b)=>b.created_at.localeCompare(a.created_at)).map(safeCheckout),demo});return true;
     }
     let target=path.replace(/^\/api/,'/v1'),secret=g.secret;
+    if(path.startsWith('/api/partners/'))secret=cookies(req).vc_partner;
     if(path.startsWith('/api/admin/')){
       if(passwordSecret)secret=passwordSecret;
       else if(!demo){if(!isAllowedGoogleAdmin(verified,process.env.ADMIN_EMAILS))fail(403,'Acceso administrativo denegado');
@@ -147,7 +155,9 @@ export async function handlePlatform(req,res,url){
     const allowed=/^\/v1\/(properties(?:\/[^/]+)?|products(?:\/[^/]+)?|shop\/settings|cleaning\/(?:settings|quote|requests|preferences)|bookings(?:\/quote)?|cart(?:\/items\/[^/]+)?|orders|checkouts\/[^/]+(?:\/(?:payment|cancel|reconcile))?|inquiries|admin\/.+|media\/[^/]+|webhooks\/stripe)$/;
     const viilifeLiveRoute=/^\/v1\/viilife\/(settings|quote|requests)$/;
     const viilifeDemoRoute=/^\/v1\/viilife-demo\/(settings|quote|requests(?:\/[a-f0-9-]+(?:\/pay)?)?)$/;
-    if(!allowed.test(target)&&!viilifeDemoRoute.test(target)&&!viilifeLiveRoute.test(target)&&!adminAuthRoute)fail(404,'Ruta no encontrada');
+    const launchRoute=/^\/v1\/(waitlist|partner-applications|partners\/(activate|dashboard|logout)|service-catalogue|experience\/reviews|client\/(likes|notifications(?:\/seen)?)|orders\/direct)$/;
+    if(!allowed.test(target)&&!launchRoute.test(target)&&!viilifeDemoRoute.test(target)&&!viilifeLiveRoute.test(target)&&!adminAuthRoute)fail(404,'Ruta no encontrada');
+    if(mutation&&!writesOpen()&&target==='/v1/orders/direct')fail(503,'El registro de operaciones todavía no está habilitado');
     if(mutation&&!writesOpen()&&['/v1/bookings','/v1/orders','/v1/inquiries','/v1/cleaning/requests','/v1/viilife/requests'].includes(target))fail(503,'El registro de operaciones todavía no está habilitado');
     const body=mutation?await payload(req):undefined;
     const headers={authorization:`Bearer ${secret||''}`};for(const h of ['content-type','idempotency-key','stripe-signature'])if(req.headers[h])headers[h]=req.headers[h];
@@ -155,6 +165,7 @@ export async function handlePlatform(req,res,url){
     const response=await app.inject({method:req.method,url:target+url.search,headers,remoteAddress:clientIp(req,(process.env.TRUSTED_PROXY_IPS||'').split(',').map(s=>s.trim()).filter(Boolean))||'127.0.0.1',payload:body?.length?body:undefined});
     if(path==='/api/admin/auth'&&req.method==='GET'&&response.statusCode===200){json(res,200,{...response.json(),password_login:Boolean(passwordSecret)});return true;}
     if(path==='/api/admin/password'&&req.method==='POST'&&response.statusCode===204)secretCookie(res,'vc_admin','',0);
+    if(path==='/api/partners/logout'&&response.statusCode===200)secretCookie(res,'vc_partner','',0);
     res.writeHead(response.statusCode,{'Content-Type':response.headers['content-type']||'application/json','Cache-Control':'no-store'});res.end(response.rawPayload);
   }catch(error){json(res,error.statusCode||503,{error:error.statusCode?error.message:'Servicio no disponible. Reintenta en unos momentos.'});}
   return true;

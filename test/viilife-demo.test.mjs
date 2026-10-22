@@ -25,7 +25,7 @@ test('demo amount, threshold boundaries and real pricing stay separate',async()=
   assert.equal(demoQuote({...input,address:{...input.address,country:'US',postal_code:'90210'}},settings).can_pay,false);
 });
 
-test('isolated ViiLife demo end-to-end, ownership, SMTP and payment safety',async t=>{
+test('isolated ViiLife demo end-to-end, ownership, SMTP and payment safety',{skip:!process.env.TEST_FIRESTORE_HOST},async t=>{
   const app=await buildApp(baseConfig,{logger:false,testing:true}),store=app.store;
   const req=(path,body,auth,method=body===undefined?'GET':'POST',idem=randomUUID())=>app.inject({method,url:'/v1'+path,headers:{...(auth?{authorization:'Bearer '+auth}:{}),'idempotency-key':idem},...(body===undefined?{}:{payload:body})});
   const ok=(r,code=200)=>{assert.equal(r.statusCode,code,r.body);return r.json();};

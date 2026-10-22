@@ -35,7 +35,7 @@ for (const useRequire of [true, false]) {
   test(`${loader} reports initialization failures with a nonzero exit`, async t => {
     const result = await runEntry(t, "await Promise.resolve(); throw new Error('STARTUP_TEST_FAILURE');", useRequire);
     assert.equal(result.status, 1, result.stderr);
-    assert.match(result.stderr, /No se pudo iniciar VIICASA:/);
+    assert.match(result.stderr, /No se pudo iniciar VII:/);
     assert.match(result.stderr, /STARTUP_TEST_FAILURE/);
     assert.doesNotMatch(result.stderr, /ERR_REQUIRE_ASYNC_MODULE/);
   });

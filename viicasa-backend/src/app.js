@@ -40,7 +40,7 @@ export async function buildApp(config, options={}) {
   await app.register(helmet);
   await app.register(rateLimit,{max:options.testing?100000:120,timeWindow:'1 minute'});
   await app.register(multipart);
-  await app.register(swagger,{openapi:{info:{title:'VIICASA API · Fase 1',version:'0.1.0',description:'Backend independiente. Importes en centavos. Tokens Bearer distintos para visitantes y administradores.'},
+  await app.register(swagger,{openapi:{info:{title:'VII API · Fase 1',version:'0.1.0',description:'Backend independiente. Importes en centavos. Tokens Bearer distintos para visitantes y administradores.'},
     components:{securitySchemes:{bearerAuth:{type:'http',scheme:'bearer'},guestAuth:{type:'http',scheme:'bearer',description:'Token obtenido de /v1/guest-sessions'}}}}});
   if(!config.production)await app.register(swaggerUi,{routePrefix:'/docs'});
   app.get('/health',{schema:{hide:true}},async()=>({status:'ok'}));

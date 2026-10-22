@@ -32,7 +32,7 @@ for(const dependency of ['fastify','firebase-admin','stripe','ip-location-api'])
 }
 if(!existsSync(new URL('../viicasa-backend/data/geoip',import.meta.url)))warnings.push('Preparar la base de países con node scripts/geoip.mjs en el backend');
 warnings.push('Verificar persistencia de MEDIA_DIR, índices, copias y Google en el hosting: no se prueban aquí');
-console.log('VIICASA — preflight de staging, sin llamadas externas');
+console.log('VII — preflight de staging, sin llamadas externas');
 for(const item of failures)console.log('PENDIENTE: '+item);
 for(const item of warnings)console.log('REVISAR: '+item);
 console.log(failures.length?`${failures.length} requisitos de staging pendientes.`:'Configuración local de staging consistente. Faltan pruebas externas.');

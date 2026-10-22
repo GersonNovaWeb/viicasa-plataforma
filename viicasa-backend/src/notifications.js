@@ -7,7 +7,7 @@ export async function enqueue(tx, key, recipient, subject, body) {
 }
 export async function checkoutNotice(tx, checkout, status, config) {
   const label = checkout.kind === 'booking' ? 'Reservación' : 'Pedido';
-  const subject = `VIICASA · ${label} ${status}`;
+  const subject = `VII · ${label} ${status}`;
   const body = `${label}: ${checkout.id}\nEstado: ${status}\nCliente: ${checkout.customer_name}\nTotal: ${(checkout.total_minor / 100).toFixed(2)} ${checkout.currency}\nImporte de este pago: ${(checkout.due_minor / 100).toFixed(2)} ${checkout.currency}\nDetalle: ${JSON.stringify(checkout.detail, null, 2)}`;
   await enqueue(tx, `${checkout.id}:${status}:customer`, checkout.customer_email, subject, body);
   await enqueue(tx, `${checkout.id}:${status}:admin`, config.adminEmail, subject, body);

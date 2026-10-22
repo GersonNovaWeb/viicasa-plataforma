@@ -8,7 +8,7 @@ test('English business receipt preserves brand, totals, contact and preferred sc
  const m=renderViiLifeMail(sample);
  for(const text of ['VIILIFE-TEST-001','Mary Smith','99.99 CAD/h × 2 h × 3 visits','599.94 CAD','Payment received','two-week','08:00','October 12, 2026','The ViiLife team will be in touch soon','not a confirmed appointment','No subscription or automatic renewal'])assert.ok(m.body.includes(text),text);
  assert.ok(m.html.includes('<html lang="en">'));assert.ok(m.html.includes('https://viicasa.com/images/logo-email.png'));
- for(const text of ['background-color:#111111','Kelowna, British Columbia, Canada','contact@viicasa.com','Instagram','Facebook','LinkedIn','This email may contain confidential','© 2026 VIICASA. All rights reserved.'])assert.ok(m.html.includes(text),text);
+ for(const text of ['background-color:#111111','Kelowna, British Columbia, Canada','contact@viicasa.com','Instagram','Facebook','LinkedIn','This email may contain confidential','© 2026 VII. All rights reserved.'])assert.ok(m.html.includes(text),text);
  assert.ok(!m.html.includes('postimg'));assert.ok(!m.body.includes('guest_id'));assert.ok(!m.html.includes('DEMONSTRATION ONLY'));
 });
 test('demo receipt never presents the simulated amount as a real charge',()=>{

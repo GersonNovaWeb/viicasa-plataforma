@@ -25,7 +25,7 @@ export function configFromEnv(env = process.env) {
     stripeMode: env.STRIPE_MODE || 'test',
     stripeKey: env.STRIPE_SECRET_KEY, stripeWebhookSecret: env.STRIPE_WEBHOOK_SECRET,
     holdMinutes: integer('HOLD_MINUTES', 30, 5, 120), sessionHours: integer('SESSION_HOURS', 8, 1, 24),
-    mailMode: env.MAIL_MODE || 'outbox', mailFrom: env.MAIL_FROM || 'VIICASA <no-reply@example.com>',
+    mailMode: env.MAIL_MODE || 'outbox', mailFrom: env.MAIL_FROM || 'VII <no-reply@example.com>',
     smtp: { host: env.SMTP_HOST, port: integer('SMTP_PORT', 587, 1, 65535), secure: env.SMTP_SECURE === 'true',
       auth: env.SMTP_USER ? { user: env.SMTP_USER, pass: env.SMTP_PASSWORD } : undefined },
     trustProxy: env.TRUST_PROXY === 'true' ? 1 : false,

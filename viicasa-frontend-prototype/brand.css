@@ -1,0 +1,14 @@
+/* Supplied black PNG, shown as-is with no background or decorative frame. */
+.header .wordmark{grid-template-columns:66px auto;column-gap:12px}
+.brand-logo{display:block;width:66px;height:44px;object-fit:contain;background:transparent;border:0;border-radius:0;padding:0;flex-shrink:0;box-sizing:border-box}
+.header .wordmark>.brand-logo{grid-row:span 2}
+.preview-header .brand.brand-with-logo{display:grid;grid-template-columns:66px auto;column-gap:12px;align-items:center;flex-shrink:0}
+.preview-header .brand-with-logo>.brand-logo{grid-row:span 2}
+.preview-header .brand-with-logo>small{grid-column:2}
+@media(max-width:700px){
+  .header .wordmark{grid-template-columns:54px auto;column-gap:9px}
+  .header .wordmark>.brand-logo{width:54px;height:38px}
+  .preview-header .brand.brand-with-logo{grid-template-columns:54px auto;column-gap:9px}
+  .preview-header .brand-with-logo>.brand-logo{width:54px;height:38px}
+}
+@media(max-width:360px){.header .wordmark{grid-template-columns:46px auto;column-gap:7px}.header .wordmark>.brand-logo{width:46px;height:34px}}

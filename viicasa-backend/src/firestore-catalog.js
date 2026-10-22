@@ -134,7 +134,7 @@ export async function registerCatalog(app,store,config,guard){
     const row=await store.transaction(async tx=>{
       if(request.body.property_id){const p=must(await tx.get('properties',request.body.property_id));if(!p.published||p.archived)fail(404,'Propiedad no encontrada');}
       const result={id:id(),...request.body,status:'new',created_at:now()};tx.create('inquiries',result.id,result);
-      await enqueue(tx,`inquiry:${result.id}`,config.adminEmail,'VIICASA · Nueva consulta',`${result.name}\n${result.email}\n${result.phone}\n${result.message}`);return{id:result.id};
+      await enqueue(tx,`inquiry:${result.id}`,config.adminEmail,'VII · Nueva consulta',`${result.name}\n${result.email}\n${result.phone}\n${result.message}`);return{id:result.id};
     });reply.code(201);return row;
   });
   app.get('/v1/admin/inquiries',{preHandler:guard.admin(['admin','support','viewer']),schema:adminSchema('Consultas',{querystring:pageSchema})},request=>listPage(store,'inquiries',request.query));

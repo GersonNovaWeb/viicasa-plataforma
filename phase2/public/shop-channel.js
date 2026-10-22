@@ -1,0 +1,12 @@
+import {enhanceChannelCart} from './channel-cart.js';
+let lang=localStorage.getItem('viicasa-phase2-language')||'en';
+const L=(es,en)=>lang==='es'?es:en,esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),cash=n=>(Number(n)/100).toFixed(2)+' CAD';
+async function load(){
+  const target=document.querySelector('#shop-product');try{
+    const r=await fetch('/api/shop-channel/products/'+encodeURIComponent(location.pathname.split('/').pop())),p=await r.json();if(!r.ok)throw Error(p.error);document.documentElement.lang=lang;document.title=p.name+' · ViiShop';document.querySelector('#language').textContent=lang==='en'?'ES':'EN';document.querySelector('header a[href="/cliente"]').textContent=L('Mi cuenta','My account');
+    target.innerHTML=`<a href="/shop#viishop-products">← ViiShop</a><div class="channel-detail"><div>${p.images[0]?`<img src="${esc(p.images[0])}" alt="${esc(p.name)}">`:''}</div><section><p class="eyebrow">VIISHOP · CHANNEL DEMO</p><h1>${esc(p.name)}</h1><p>${esc(p.description)}</p><form id="channel-checkout"><label>${L('Variante','Variant')}<select name="variant_id">${p.variants.map(v=>`<option value="${v.id}" ${v.available?'':'disabled'}>${esc(v.name)} · ${cash(v.price_minor)} · ${v.available} ${L('disponibles','available')}</option>`).join('')}</select></label><label>${L('Cantidad','Quantity')}<input name="quantity" type="number" value="1" required min="1" max="99"></label><label class="check"><input type="checkbox" required>${L('Entiendo que es una operación ficticia sin cobro ni entrega','I understand this is fictional, with no payment or delivery')}</label><button type="submit" ${p.variants.some(v=>v.available)?'':'disabled'}>${L('Preparar pedido de demo','Prepare demo order')}</button><p id="channel-result" role="status"></p></form><p class="warning">${L('Este canal aún no está conectado a Shopify. El checkout real se habilitará con el adaptador y la tienda aprobados.','This channel is not connected to Shopify yet. Real checkout requires the approved adapter and store.')}</p><a href="/cliente">${L('Entrar y ver mis pedidos','Sign in & view my orders')} ↗</a></section></div>`;
+    const form=document.querySelector('#channel-checkout');
+    await enhanceChannelCart({form,L,esc,cash,product:p});
+  }catch(e){target.innerHTML=`<p role="alert">${esc(e.message)}</p><a href="/shop">← ViiShop</a>`;}
+}
+document.querySelector('#language').onclick=()=>{lang=lang==='en'?'es':'en';localStorage.setItem('viicasa-phase2-language',lang);load();};await load();

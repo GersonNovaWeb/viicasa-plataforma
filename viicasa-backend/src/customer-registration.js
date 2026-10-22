@@ -41,6 +41,20 @@ export async function saveSocialCustomer(store,user,country,secret,config) {
 // Compatibility for existing callers and registration tests.
 export const saveGoogleCustomer=saveSocialCustomer;
 
+// Claim only purchases from the current anonymous browser session AND the
+// freshly verified purchaser email. Never merge identities/accounts by email.
+export async function attachGuestPurchases(store,user,previousSecret){
+  if(!previousSecret||user.email_verified!==true)return{attached:0};
+  const index=await store.get('guest_tokens',hash(previousSecret)),source=index&&await store.get('guests',index.guest_id),account=await store.get('platform_accounts',key('google',user.uid));
+  if(!source||source.firebase_uid||source.google_uid||source.expires_at<=now()||!account||account.guest_id===index.guest_id)return{attached:0};
+  const candidates=await store.list('checkouts',{where:[['guest_id','==',index.guest_id]],limit:100});let attached=0;
+  for(const candidate of candidates)attached+=await store.transaction(async tx=>{
+    const row=await tx.get('checkouts',candidate.id),owner=await tx.get('guests',account.guest_id),anonymous=await tx.get('guests',index.guest_id),session=await tx.get('guest_tokens',hash(previousSecret));
+    if(!row||row.guest_id!==index.guest_id||owner?.firebase_uid!==user.uid||!session||session.guest_id!==index.guest_id||!anonymous||anonymous.firebase_uid||anonymous.google_uid||anonymous.expires_at<=now()||row.customer_email?.trim().toLowerCase()!==user.email.trim().toLowerCase())return 0;
+    tx.put('checkouts',row.id,{...row,guest_id:account.guest_id,claimed_at:now()});return 1;
+  });return{attached};
+}
+
 export const publicCustomer = row => ({name:row.name||'',email:row.email||'',created_at:row.created_at||null,
   login_provider:row.login_provider||(row.google_uid?'google.com':null),email_verified:row.email_verified??null,
   registration:row.registration||{...registrationRegion(null),recorded_at:null}});

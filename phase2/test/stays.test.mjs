@@ -1,0 +1,61 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+import {openPhase2Databases} from '../database.mjs';
+import {seedPhase2,demoCredentials} from '../bootstrap.mjs';
+import {buildPhase2App} from '../app.mjs';
+import {secretVault,totp} from '../security.mjs';
+import {ingestStayEvent,processStayJobs,seedStayUnits} from '../stays.mjs';
+import {localStayTime} from '../stay-time.mjs';
+import {deliverCommercialMail} from '../mail.mjs';
+const origin='http://127.0.0.1:3030';
+const normalized=(unit,extra={})=>({provider:'lodgify',event_id:randomUUID(),external_reference:'DEMO-'+randomUUID(),source_revision:1,event:'confirmed',unit_id:unit.id,guest_name:'Avery Demo',guest_email:'guest@example.invalid',guests:2,checkin_date:'2027-07-10',checkout_date:'2027-07-14',...extra});
+const now=new Date('2027-07-01T12:00:00Z');
+async function fixture(t){const dbs=await openPhase2Databases('',{memory:true});t.after(()=>dbs.close());await seedPhase2(dbs);await seedStayUnits(dbs.commercial);const unit=(await dbs.commercial.query('SELECT * FROM stay_units LIMIT 1')).rows[0],admin=(await dbs.commercial.query("SELECT id FROM team_users WHERE role='admin' LIMIT 1")).rows[0];return{...dbs,unit,options:{actorId:admin.id,now}};}
+test('stay local times handle DST and explicitly reject ambiguous/missing times',()=>{
+  assert.equal(localStayTime('2027-07-10','16:00','America/Vancouver'),'2027-07-10T23:00:00.000Z');
+  assert.equal(localStayTime('2027-01-10','16:00','America/Vancouver'),'2027-01-11T00:00:00.000Z');
+  assert.throws(()=>localStayTime('2027-03-14','02:30','America/Vancouver'),/missing or ambiguous/);
+  assert.throws(()=>localStayTime('2027-11-07','01:30','America/Vancouver'),/missing or ambiguous/);
+  assert.throws(()=>localStayTime('2027-02-30','16:00','America/Vancouver'),/Invalid stay date/);
+});
+test('reservation inbox is idempotent, rejects overlap, retains stale events and safely reschedules notices',async t=>{
+  const {commercial:db,unit,options}=await fixture(t),e=normalized(unit),r=await ingestStayEvent(db,e,options);assert.equal(r.status,'confirmed');
+  assert.equal((await ingestStayEvent(db,e,options)).duplicate,true);
+  await assert.rejects(ingestStayEvent(db,{...e,guests:3},options),/reused/);
+  const conflict=await ingestStayEvent(db,normalized(unit),options);assert.equal(conflict.reason,'availability_conflict');
+  assert.equal((await db.query('SELECT count(*)::integer AS n FROM stay_reservations')).rows[0].n,1);
+  assert.equal((await ingestStayEvent(db,{...e,event_id:randomUUID(),event:'modified'},options)).reason,'stale_revision');
+  await processStayJobs(db,{now});assert.equal((await db.query("SELECT count(*)::integer AS n FROM commercial_mail WHERE delivery_scope='preview'")).rows[0].n,1);
+  const modified={...e,event_id:randomUUID(),event:'modified',source_revision:2,checkin_date:'2027-07-15',checkout_date:'2027-07-18'};
+  const changed=await ingestStayEvent(db,modified,options);assert.equal(changed.revision,2);
+  const obsolete=(await db.query('SELECT status FROM commercial_mail LIMIT 1')).rows[0];assert.equal(obsolete.status,'cancelled');
+  const previousJobs=(await db.query('SELECT status FROM stay_jobs WHERE reservation_revision=1')).rows;assert.ok(previousJobs.every(j=>j.status==='cancelled'));
+  await processStayJobs(db,{now});await processStayJobs(db,{now});assert.equal((await db.query("SELECT count(*)::integer AS n FROM commercial_mail WHERE dedupe LIKE '%:v2:rescheduled'")).rows[0].n,1);
+  const cancelled=await ingestStayEvent(db,{...modified,event_id:randomUUID(),event:'cancelled',source_revision:3},options);assert.equal(cancelled.status,'cancelled');
+  await processStayJobs(db,{now});assert.equal((await db.query("SELECT count(*)::integer AS n FROM stay_jobs WHERE status='scheduled'")).rows[0].n,0);
+  assert.equal((await ingestStayEvent(db,{...modified,event_id:randomUUID(),event:'cancelled',source_revision:4},options)).reason,'already_cancelled');
+  const delivered=await deliverCommercialMail(db,{mailMode:'smtp'},{sendMail:()=>assert.fail('Stay demo emails must NEVER be sent')});assert.equal(delivered.sent,0);
+});
+test('adjacent stays are available; concurrent overlapping events cannot double-book',async t=>{
+  const {commercial:db,unit,options}=await fixture(t);
+  const [a,b]=await Promise.all([ingestStayEvent(db,normalized(unit),options),ingestStayEvent(db,normalized(unit),options)]);assert.equal([a,b].filter(r=>r.applied).length,1);assert.equal([a,b].filter(r=>r.reason==='availability_conflict').length,1);
+  const adjoining=await ingestStayEvent(db,normalized(unit,{checkin_date:'2027-07-14',checkout_date:'2027-07-16'}),options);assert.ok(adjoining.applied);
+  const expired=await processStayJobs(db,{now:new Date('2027-08-01T12:00:00Z')});assert.equal(expired.queued,0);assert.ok(expired.skipped>0);
+});
+test('stay API is admin-only, client scope requires verified email and unit edits preserve reservation snapshots',async t=>{
+  const f=await fixture(t),app=await buildPhase2App(f,secretVault(Buffer.alloc(32,7)),{testing:true});t.after(()=>app.close());
+  const call=(path,{method='GET',cookie,body}={})=>app.inject({url:path,method,headers:{origin,...(cookie?{cookie}:{})},payload:body});
+  const login=async credentials=>{const challenge=(await call('/api/commercial/login',{method:'POST',body:credentials})).json(),r=await call('/api/commercial/verify',{method:'POST',body:{challenge:challenge.challenge,code:totp(challenge.secret)}});assert.equal(r.statusCode,200,r.body);return r.headers['set-cookie'].split(';')[0];};
+  const admin=await login(demoCredentials.admin),seller=await login(demoCredentials.seller);
+  assert.equal((await call('/api/commercial/stays/reservations',{cookie:seller})).statusCode,403);assert.equal((await call('/api/client/stays')).statusCode,401);
+  const event=normalized(f.unit),created=await call('/api/commercial/stays/events/demo',{method:'POST',cookie:admin,body:event});assert.equal(created.statusCode,200,created.body);
+  const reserve=(await call('/api/commercial/stays/reservations',{cookie:admin})).json().items[0];assert.equal(reserve.payment_verified,false);
+  const edit={name:'New display name',address:f.unit.address,timezone:f.unit.timezone,capacity:f.unit.capacity,checkin_time:f.unit.checkin_time,checkout_time:f.unit.checkout_time,arrival_message:'A new message',departure_message:'Thank you',active:true,revision:f.unit.revision};
+  assert.equal((await call('/api/commercial/stays/units/'+f.unit.id,{method:'PUT',cookie:admin,body:edit})).statusCode,200);
+  assert.equal((await call('/api/commercial/stays/reservations',{cookie:admin})).json().items[0].unit_snapshot.name,f.unit.name);
+  assert.equal((await call('/api/commercial/stays/reservations/'+reserve.id+'/status',{method:'POST',cookie:admin,body:{status:'checked_out',revision:reserve.revision}})).statusCode,409);
+  await processStayJobs(f.commercial,{now});const outbox=(await call('/api/commercial/outbox',{cookie:admin})).json();assert.equal(outbox.items.find(m=>m.subject.includes('reservation')).delivery_scope,'preview');
+  const customer=async email=>{const registered=await call('/api/client/register',{method:'POST',body:{email,name:'Demo Reader',password:'Customer-Demo-2026!'}});const mail=(await f.commercial.query("SELECT body FROM commercial_mail WHERE recipient=$1 AND subject LIKE '%Verify your email%' ORDER BY created_at DESC LIMIT 1",[email])).rows[0];const verified=await call('/api/client/verify',{method:'POST',body:{challenge:registered.json().challenge,code:mail.body.match(/code is (\d{6})/)[1]}});assert.equal(verified.statusCode,200,verified.body);return verified.headers['set-cookie'].split(';')[0];};
+  const owner=await customer('guest@example.invalid'),other=await customer('other@example.invalid');assert.equal((await call('/api/client/stays',{cookie:owner})).json().items.length,1);assert.equal((await call('/api/client/stays',{cookie:other})).json().items.length,0);
+});

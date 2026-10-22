@@ -18,7 +18,7 @@ export function bindEmailLogin({api,L,settings,lang}){
       const create=f.elements.create.checked;
       const result=create?await sdk.createUserWithEmailAndPassword(auth,email,password):await sdk.signInWithEmailAndPassword(auth,email,password);
       if(create)await sdk.updateProfile(result.user,{displayName:f.elements.name.value.trim()});
-      if(!result.user.emailVerified){await sdk.sendEmailVerification(result.user,action);status.textContent=L('Verifica tu correo con el enlace enviado y después inicia sesión. Aún no se ha abierto una sesión en VIICASA.','Verify your email using the link we sent, then sign in. No VIICASA session has been opened yet.');return;}
+      if(!result.user.emailVerified){await sdk.sendEmailVerification(result.user,action);status.textContent=L('Verifica tu correo con el enlace enviado y después inicia sesión. Aún no se ha abierto una sesión en VII.','Verify your email using the link we sent, then sign in. No VII session has been opened yet.');return;}
       await api('/auth/social',{method:'POST',body:{idToken:await result.user.getIdToken(true)}});await sdk.signOut(auth);auth=null;location.reload();
     }catch(error){
       const generic=L('No se pudo completar el acceso. Revisa tus datos o utiliza Google o Apple si ya tenías cuenta.','Unable to sign in. Check your details, or use Google or Apple if you already have an account.');
